@@ -44,7 +44,6 @@ import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Leaves;
-import org.bukkit.entity.ThrownExpBottle;
 import org.bukkit.util.BlockVector;
 import org.bukkit.util.Vector;
 
@@ -416,6 +415,10 @@ public class IrisObject extends IrisRegistrant {
         return place(x, yv, z, placer, config, rng, null, null, rdata);
     }
 
+    public int place(Location loc, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisDataManager rdata) {
+        return place(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ(), placer, config, rng, rdata);
+    }
+
     public int place(int x, int yv, int z, IObjectPlacer oplacer, IrisObjectPlacement config, RNG rng, Consumer<BlockPosition> listener, CarveResult c, IrisDataManager rdata) {
         IObjectPlacer placer = (config.getHeightmap() != null) ? new IObjectPlacer() {
             final long s = rng.nextLong() + yv + z - x;
@@ -578,8 +581,7 @@ public class IrisObject extends IrisRegistrant {
         int lowest = Integer.MAX_VALUE;
         y += yrand;
         readLock.lock();
-        try
-        {
+        try {
             for (BlockVector g : getBlocks().keySet()) {
                 BlockData d;
                 TileData<? extends TileState> tile = null;
@@ -617,12 +619,9 @@ public class IrisObject extends IrisRegistrant {
                             if (j.isExact() ? k.matches(data) : k.getMaterial().equals(data.getMaterial())) {
                                 BlockData newData = j.getReplace(rng, i.getX() + x, i.getY() + y, i.getZ() + z, rdata).clone();
 
-                                if (newData.getMaterial() == data.getMaterial())
-                                {
+                                if (newData.getMaterial() == data.getMaterial()) {
                                     data = data.merge(newData);
-                                }
-                                else
-                                {
+                                } else {
                                     data = newData;
                                 }
                             }
@@ -676,10 +675,7 @@ public class IrisObject extends IrisRegistrant {
                     }
                 }
             }
-        }
-
-        catch(Throwable e)
-        {
+        } catch (Throwable e) {
             Iris.reportError(e);
         }
         readLock.unlock();

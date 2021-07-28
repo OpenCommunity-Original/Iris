@@ -19,13 +19,34 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.engine.object.annotations.Desc;
+import com.volmit.iris.engine.object.annotations.Required;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
-@Desc("A loot mode is used to describe what to do with the existing loot layers before adding this loot. Using ADD will simply add this table to the building list of tables (i.e. add dimension tables, region tables then biome tables). By using clear or replace, you remove the parent tables before and add just your tables.")
-public enum LootMode {
-    @Desc("Add to the existing parent loot tables")
-    ADD,
-    @Desc("Clear all loot tables then add this table")
-    CLEAR,
-    @Desc("Replace all loot tables with this table (same as clear)")
-    REPLACE
+@Accessors(chain = true)
+@NoArgsConstructor
+@AllArgsConstructor
+@Desc("Sapling override object picking options")
+@Data
+public class IrisTreeSize {
+
+    @Required
+    @Desc("The width of the sapling area")
+    int width = 1;
+
+    @Required
+    @Desc("The depth of the sapling area")
+    int depth = 1;
+
+    /**
+     * Does the size match
+     *
+     * @param size the size to check match
+     * @return true if it matches (fits within width and depth)
+     */
+    public boolean doesMatch(IrisTreeSize size) {
+        return (width == size.getWidth() && depth == size.getDepth()) || (depth == size.getWidth() && width == size.getDepth());
+    }
 }

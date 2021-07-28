@@ -20,12 +20,11 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.engine.object.annotations.Desc;
 
-@Desc("A loot mode is used to describe what to do with the existing loot layers before adding this loot. Using ADD will simply add this table to the building list of tables (i.e. add dimension tables, region tables then biome tables). By using clear or replace, you remove the parent tables before and add just your tables.")
-public enum LootMode {
-    @Desc("Add to the existing parent loot tables")
-    ADD,
-    @Desc("Clear all loot tables then add this table")
-    CLEAR,
-    @Desc("Replace all loot tables with this table (same as clear)")
-    REPLACE
+@Desc("Sapling override object picking options")
+public enum IrisTreeModes {
+    @Desc("Check biome, then region, then dimension, pick the first one that has options")
+    FIRST,
+
+    @Desc("Check biome, regions, and dimensions, and pick any option from the total list")
+    ALL
 }

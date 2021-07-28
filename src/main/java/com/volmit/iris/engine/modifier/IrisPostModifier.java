@@ -25,6 +25,7 @@ import com.volmit.iris.engine.framework.EngineAssignedModifier;
 import com.volmit.iris.engine.hunk.Hunk;
 import com.volmit.iris.engine.object.IrisBiome;
 import com.volmit.iris.engine.object.common.CaveResult;
+import com.volmit.iris.engine.parallel.BurstExecutor;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import org.bukkit.Material;
@@ -32,6 +33,8 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Slab;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
     private static final BlockData AIR = B.get("CAVE_AIR");
@@ -44,14 +47,29 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
     }
 
     @Override
-    public void onModify(int x, int z, Hunk<BlockData> output) {
+    public void onModify(int x, int z, Hunk<BlockData> output, boolean multicore) {
         PrecisionStopwatch p = PrecisionStopwatch.start();
-        int i, j;
-        for (i = 0; i < output.getWidth(); i++) {
-            for (j = 0; j < output.getDepth(); j++) {
-                post(i, j, output, i + x, j + z);
+        int i;
+        AtomicInteger j = new AtomicInteger();
+        if (multicore) {
+            BurstExecutor e = getEngine().burst().burst(output.getWidth());
+            for (i = 0; i < output.getWidth(); i++) {
+                int finalI = i;
+                e.queue(() -> {
+                    for (j.set(0); j.get() < output.getDepth(); j.getAndIncrement()) {
+                        post(finalI, j.get(), output, finalI + x, j.get() + z);
+                    }
+                });
+            }
+            e.complete();
+        } else {
+            for (i = 0; i < output.getWidth(); i++) {
+                for (j.set(0); j.get() < output.getDepth(); j.getAndIncrement()) {
+                    post(i, j.get(), output, i + x, j.get() + z);
+                }
             }
         }
+
         getEngine().getMetrics().getPost().put(p.getMilliseconds());
     }
 
@@ -462,8 +480,11 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
 
 
     public void setPostBlock(int x, int y, int z, BlockData d, int currentPostX, int currentPostZ, Hunk<BlockData> currentData) {
-        if (y < currentData.getHeight()) {
-            currentData.set(x & 15, y, z & 15, d);
+        synchronized (currentData)
+        {
+            if (y < currentData.getHeight()) {
+                currentData.set(x & 15, y, z & 15, d);
+            }
         }
     }
 

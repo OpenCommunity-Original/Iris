@@ -42,7 +42,7 @@ public class IrisTerrainIslandActuator extends EngineAssignedActuator<BlockData>
     private final boolean carving;
     private final boolean hasUnder;
     @Getter
-    private int lastBedrock = -1;
+    private final int lastBedrock = -1;
 
     public IrisTerrainIslandActuator(Engine engine) {
         super(engine, "TerrainIsland");
@@ -53,7 +53,7 @@ public class IrisTerrainIslandActuator extends EngineAssignedActuator<BlockData>
 
     @BlockCoordinates
     @Override
-    public void onActuate(int x, int z, Hunk<BlockData> h) {
+    public void onActuate(int x, int z, Hunk<BlockData> h, boolean multicore) {
         PrecisionStopwatch p = PrecisionStopwatch.start();
         int i, zf, depth, surface, realX, realZ;
         IrisBiome biome;
