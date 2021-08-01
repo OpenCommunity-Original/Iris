@@ -25,7 +25,6 @@ import com.volmit.iris.engine.framework.EngineAssignedModifier;
 import com.volmit.iris.engine.hunk.Hunk;
 import com.volmit.iris.engine.object.IrisBiome;
 import com.volmit.iris.engine.object.common.CaveResult;
-import com.volmit.iris.engine.parallel.BurstExecutor;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import org.bukkit.Material;
@@ -51,22 +50,10 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
         PrecisionStopwatch p = PrecisionStopwatch.start();
         int i;
         AtomicInteger j = new AtomicInteger();
-        if (multicore) {
-            BurstExecutor e = getEngine().burst().burst(output.getWidth());
-            for (i = 0; i < output.getWidth(); i++) {
-                int finalI = i;
-                e.queue(() -> {
-                    for (j.set(0); j.get() < output.getDepth(); j.getAndIncrement()) {
-                        post(finalI, j.get(), output, finalI + x, j.get() + z);
-                    }
-                });
-            }
-            e.complete();
-        } else {
-            for (i = 0; i < output.getWidth(); i++) {
-                for (j.set(0); j.get() < output.getDepth(); j.getAndIncrement()) {
-                    post(i, j.get(), output, i + x, j.get() + z);
-                }
+
+        for (i = 0; i < output.getWidth(); i++) {
+            for (j.set(0); j.get() < output.getDepth(); j.getAndIncrement()) {
+                post(i, j.get(), output, i + x, j.get() + z);
             }
         }
 
@@ -75,7 +62,6 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
 
     @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     private void post(int currentPostX, int currentPostZ, Hunk<BlockData> currentData, int x, int z) {
-
         int h = getFramework().getEngineParallax().trueHeight(x, z);
         int ha = getFramework().getEngineParallax().trueHeight(x + 1, z);
         int hb = getFramework().getEngineParallax().trueHeight(x, z + 1);
@@ -478,13 +464,9 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
         return d instanceof Levelled;
     }
 
-
     public void setPostBlock(int x, int y, int z, BlockData d, int currentPostX, int currentPostZ, Hunk<BlockData> currentData) {
-        synchronized (currentData)
-        {
-            if (y < currentData.getHeight()) {
-                currentData.set(x & 15, y, z & 15, d);
-            }
+        if (y < currentData.getHeight()) {
+            currentData.set(x & 15, y, z & 15, d);
         }
     }
 

@@ -18,6 +18,7 @@
 
 package com.volmit.iris.engine.jigsaw;
 
+import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.core.tools.IrisWorlds;
@@ -28,7 +29,6 @@ import com.volmit.iris.engine.object.*;
 import com.volmit.iris.engine.object.common.IObjectPlacer;
 import com.volmit.iris.engine.parallax.ParallaxChunkMeta;
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.math.RNG;
 import lombok.Data;
 import org.bukkit.Axis;
@@ -42,14 +42,18 @@ public class PlannedStructure {
     private IrisJigsawStructure structure;
     private IrisPosition position;
     private IrisDataManager data;
-    private static KMap<String, IrisObject> objectRotationCache;
     private RNG rng;
     private boolean verbose;
     private boolean terminating;
+    private static transient ConcurrentLinkedHashMap<String, IrisObject> objectRotationCache
+            = new ConcurrentLinkedHashMap.Builder<String, IrisObject>()
+            .initialCapacity(64)
+            .maximumWeightedCapacity(1024)
+            .concurrencyLevel(32)
+            .build();
 
     public PlannedStructure(IrisJigsawStructure structure, IrisPosition position, RNG rng) {
         terminating = false;
-        objectRotationCache = new KMap<>();
         verbose = true;
         this.pieces = new KList<>();
         this.structure = structure;
@@ -282,17 +286,8 @@ public class PlannedStructure {
 
         IrisPosition shift = test.getWorldPosition(testConnector);
         test.setPosition(desiredPosition.sub(shift));
-        KList<PlannedPiece> collision = collidesWith(test);
 
-        if (pieceConnector.isInnerConnector() && collision.isNotEmpty()) {
-            for (PlannedPiece i : collision) {
-                if (i.equals(piece)) {
-                    continue;
-                }
-
-                return false;
-            }
-        } else if (collision.isNotEmpty()) {
+        if (collidesWith(test, piece)) {
             return false;
         }
 
@@ -355,17 +350,6 @@ public class PlannedStructure {
         return v;
     }
 
-    public KList<PlannedPiece> collidesWith(PlannedPiece piece) {
-        KList<PlannedPiece> v = new KList<>();
-        for (PlannedPiece i : pieces) {
-            if (i.collidesWith(piece)) {
-                v.add(i);
-            }
-        }
-
-        return v;
-    }
-
     public boolean collidesWith(PlannedPiece piece, PlannedPiece ignore) {
         for (PlannedPiece i : pieces) {
             if (i.equals(ignore)) {
@@ -393,16 +377,12 @@ public class PlannedStructure {
     public IrisObject rotated(IrisJigsawPiece piece, IrisObjectRotation rotation) {
         String key = piece.getObject() + "-" + rotation.hashCode();
 
-        if (objectRotationCache.containsKey(key)) {
-            IrisObject o = objectRotationCache.get(key);
-
-            if (o != null) {
-                return o;
+        return objectRotationCache.compute(key, (k, v) -> {
+            if (v == null) {
+                return rotation.rotateCopy(data.getObjectLoader().load(piece.getObject()));
             }
-        }
 
-        IrisObject o = rotation.rotateCopy(data.getObjectLoader().load(piece.getObject()));
-        objectRotationCache.put(key, o);
-        return o;
+            return v;
+        });
     }
 }
