@@ -1,14 +1,3 @@
-plugins {
-    id 'java'
-    id 'io.freefair.lombok' version '5.2.1'
-    id "com.github.johnrengelman.shadow" version "7.0.0"
-}
-
-group 'com.volmit.iris'
-version '1.5.18'
-def apiVersion = '1.17'
-def name = 'Iris'
-def main = 'com.volmit.iris.Iris'
 
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
@@ -28,14 +17,61 @@ def main = 'com.volmit.iris.Iris'
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.1.0'
+    }
+}
+
+plugins {
+    id 'java'
+    id 'io.freefair.lombok' version '5.2.1'
+    id "com.github.johnrengelman.shadow" version "7.0.0"
+}
+
+group 'com.volmit.iris'
+version '1.6.1'
+def apiVersion = '1.17'
+def name = 'Iris'
+def main = 'com.volmit.iris.Iris'
+
 // ADD YOURSELF AS A NEW LINE IF YOU WANT YOUR OWN BUILD TASK GENERATED
 // ==============================================================
 registerCustomOutputTask('Cyberpwn', 'C://Users/cyberpwn/Documents/development/server/plugins');
 registerCustomOutputTask('Psycho', 'D://Dan/MinecraftDevelopment/server/plugins');
 registerCustomOutputTask('ArcaneArts', 'C://Users/arcane/Documents/development/server/plugins');
-registerCustomOutputTask('Coco', 'C:/Users/sjoer/Documents/MCServer/plugins');
+registerCustomOutputTask('Coco', 'C:/Users/sjoer/Documents/Development/MCServer/plugins');
 registerCustomOutputTask('Strange', 'D://Servers/1.17 Test Server/plugins');
 // ==============================================================
+
+def dependsDir = "${buildDir}/libs/dependencies/"
+
+task copyDepends(type: Copy) {
+    dependsOn(":shadowJar")
+    group('proguard')
+    from configurations.default
+    into "${dependsDir}"
+}
+
+task release(type: proguard.gradle.ProGuardTask) {
+    dependsOn(":copyDepends")
+    group('proguard')
+    configuration 'proguard.pro'
+    injars("${buildDir}/libs/" + name + "-" + version + "-all.jar")
+    outjars("${buildDir}/production/" + name + "/" + version + "/" + name + "-" + version + ".jar")
+    libraryjars "${System.getProperty('java.home')}/lib/rt.jar"
+    libraryjars "${System.getProperty('java.home')}/jmods/"
+    libraryjars "${dependsDir}"
+    dontobfuscate()
+    dontwarn()
+    dontshrink()
+    dontoptimize()
+    dontnote()
+    verbose()
+}
 
 def registerCustomOutputTask(name, path) {
     tasks.register('build' + name, Copy) {
@@ -75,21 +111,20 @@ shadowJar
 {
     append("plugin.yml")
     minimize()
+    relocate 'com.dfsek.paralithic', 'com.volmit.iris.util.paralithic'
+    relocate 'io.papermc.lib', 'com.volmit.iris.util.paper'
     dependencies {
-        include(dependency('org.zeroturnaround:zt-zip:1.14'))
-        include(dependency('com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4.2'))
         include(dependency('io.papermc:paperlib:1.0.5'))
+        include(dependency('com.dfsek:Paralithic:0.4.0'))
     }
 }
 
 manifest()
 
 dependencies {
+    // Provided or Classpath
     compileOnly 'org.projectlombok:lombok:1.18.20'
     annotationProcessor 'org.projectlombok:lombok:1.18.20'
-    implementation 'org.zeroturnaround:zt-zip:1.14'
-    implementation 'io.papermc:paperlib:1.0.5'
-    implementation 'com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4.2'
     implementation 'org.spigotmc:spigot-api:1.17-R0.1-SNAPSHOT'
     implementation 'org.bukkit.craftbukkit:1.17:1.17'
     implementation 'org.bukkit.craftbukkit:1.17.1:1.17.1'
@@ -97,7 +132,17 @@ dependencies {
     implementation 'org.bukkit.craftbukkit:1.16.3:1.16.3'
     implementation 'org.bukkit.craftbukkit:1.16.1:1.16.1'
     implementation 'com.sk89q.worldedit:worldedit-bukkit:7.2.0-SNAPSHOT'
-    implementation 'io.lumine.xikage:MythicMobs:4.9.1'
-    implementation 'com.google.code.gson:gson:2.8.5'
     implementation 'me.clip:placeholderapi:2.10.10'
+
+    // Shaded
+    implementation 'com.dfsek:Paralithic:0.4.0'
+    implementation 'io.papermc:paperlib:1.0.5'
+
+    // Dynamically Loaded
+    implementation 'it.unimi.dsi:fastutil:8.5.4'
+    implementation 'com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4.2'
+    implementation 'org.zeroturnaround:zt-zip:1.14'
+    implementation 'com.google.code.gson:gson:2.8.5'
+    implementation 'org.ow2.asm:asm:9.0'
+    implementation 'com.google.guava:guava:30.1.1-jre'
 }

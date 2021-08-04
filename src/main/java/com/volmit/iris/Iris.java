@@ -24,9 +24,9 @@ import com.volmit.iris.core.command.PermissionIris;
 import com.volmit.iris.core.command.world.CommandLocate;
 import com.volmit.iris.core.link.IrisPapiExpansion;
 import com.volmit.iris.core.link.MultiverseCoreLink;
-import com.volmit.iris.core.link.MythicMobsLink;
 import com.volmit.iris.core.link.OraxenLink;
 import com.volmit.iris.core.nms.INMS;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.EngineCompositeGenerator;
 import com.volmit.iris.engine.object.IrisBiome;
@@ -57,11 +57,11 @@ import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.*;
 import java.net.URL;
@@ -77,7 +77,6 @@ public class Iris extends VolmitPlugin implements Listener {
     public static EditManager edit;
     public static IrisBoardManager board;
     public static MultiverseCoreLink linkMultiverseCore;
-    public static MythicMobsLink linkMythicMobs;
     public static OraxenLink linkOraxen;
     public static TreeManager saplingManager;
     private static final Queue<Runnable> syncJobs = new ShurikenQueue<>();
@@ -97,20 +96,19 @@ public class Iris extends VolmitPlugin implements Listener {
         installDataPacks();
     }
 
+    public static void callEvent(Event e) {
+        J.s(() -> Bukkit.getPluginManager().callEvent(e));
+    }
+
 
     public void onEnable() {
         instance = this;
-        try {
-            compat = IrisCompat.configured(getDataFile("compat.json"));
-        } catch (IOException e) {
-            Iris.reportError(e);
-        }
+        compat = IrisCompat.configured(getDataFile("compat.json"));
         proj = new ProjectManager();
         convert = new ConversionManager();
         wand = new WandManager();
         board = new IrisBoardManager();
         linkMultiverseCore = new MultiverseCoreLink();
-        linkMythicMobs = new MythicMobsLink();
         linkOraxen = new OraxenLink();
         saplingManager = new TreeManager();
         edit = new EditManager();
@@ -129,16 +127,20 @@ public class Iris extends VolmitPlugin implements Listener {
         J.a(this::splash, 20);
         J.ar(this::checkConfigHotload, 60);
         J.sr(this::tickQueue, 0);
-        J.a(this::setupPapi);
+        J.s(this::setupPapi);
     }
 
     private void setupPapi() {
-        if(Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
             new IrisPapiExpansion().register();
         }
     }
 
     public File getDatapacksFolder() {
+        if (!IrisSettings.get().getGeneral().forceMainWorld.isEmpty()) {
+            return new File(IrisSettings.get().getGeneral().forceMainWorld + "/datapacks");
+        }
+
         File props = new File("server.properties");
 
         if (props.exists()) {
@@ -174,7 +176,7 @@ public class Iris extends VolmitPlugin implements Listener {
             for (File i : packs.listFiles()) {
                 if (i.isDirectory()) {
                     Iris.verbose("Checking Pack: " + i.getPath());
-                    IrisDataManager data = new IrisDataManager(i);
+                    IrisData data = new IrisData(i);
                     File dims = new File(i, "dimensions");
 
                     if (dims.exists()) {
@@ -297,7 +299,7 @@ public class Iris extends VolmitPlugin implements Listener {
             for (File i : packs.listFiles()) {
                 if (i.isDirectory()) {
                     Iris.verbose("Checking Pack: " + i.getPath());
-                    IrisDataManager data = new IrisDataManager(i);
+                    IrisData data = new IrisData(i);
                     File dims = new File(i, "dimensions");
 
                     if (dims.exists()) {
@@ -334,7 +336,7 @@ public class Iris extends VolmitPlugin implements Listener {
     }
 
     public boolean verifyDataPackInstalled(IrisDimension dimension) {
-        IrisDataManager idm = new IrisDataManager(getDataFolder("packs", dimension.getLoadKey()));
+        IrisData idm = new IrisData(getDataFolder("packs", dimension.getLoadKey()));
         KSet<String> keys = new KSet<>();
         boolean warn = false;
 
@@ -385,7 +387,7 @@ public class Iris extends VolmitPlugin implements Listener {
 
 
     @Override
-    public ChunkGenerator getDefaultWorldGenerator(@NotNull String worldName, String id) {
+    public ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
         String dimension = IrisSettings.get().getGenerator().getDefaultWorldType();
 
         if (id != null && !id.isEmpty()) {

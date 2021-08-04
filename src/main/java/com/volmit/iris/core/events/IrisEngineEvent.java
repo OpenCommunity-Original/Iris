@@ -16,16 +16,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.object.annotations;
+package com.volmit.iris.core.events;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+import com.volmit.iris.engine.framework.Engine;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import org.bukkit.event.Event;
+import org.bukkit.event.HandlerList;
 
-import static java.lang.annotation.ElementType.*;
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+@EqualsAndHashCode(callSuper = true)
+@Data
+@AllArgsConstructor
+public class IrisEngineEvent extends Event {
+    private static final HandlerList handlers = new HandlerList();
+    private Engine engine;
 
-@Retention(RUNTIME)
-@Target({PARAMETER, TYPE, FIELD})
-public @interface RegistryListLoot {
+    @Override
+    public HandlerList getHandlers() {
+        return handlers;
+    }
 
+    public static HandlerList getHandlerList() {
+        return handlers;
+    }
 }

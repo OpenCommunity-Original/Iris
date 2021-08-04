@@ -19,6 +19,7 @@
 package com.volmit.iris.engine.stream;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.hunk.Hunk;
 import com.volmit.iris.engine.object.IrisStyledRange;
 import com.volmit.iris.engine.object.common.IRare;
@@ -98,8 +99,20 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new AddingStream<>(this, a);
     }
 
+    default ProceduralStream<T> add(ProceduralStream<Double> a) {
+        return add2D((x, z) -> a.get(x, z));
+    }
+
+    default ProceduralStream<T> subtract(ProceduralStream<Double> a) {
+        return subtract2D((x, z) -> a.get(x, z));
+    }
+
     default ProceduralStream<T> add2D(Function2<Double, Double, Double> a) {
         return new AddingStream<>(this, a);
+    }
+
+    default ProceduralStream<T> subtract2D(Function2<Double, Double, Double> a) {
+        return new SubtractingStream<T>(this, a);
     }
 
     default ProceduralStream<T> add(double a) {
@@ -250,6 +263,10 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new CachedStream2D<T>(this, maxSize);
     }
 
+    default ProceduralStream<T> cache3D(int maxSize) {
+        return new CachedStream3D<T>(this, maxSize);
+    }
+
     default <V> ProceduralStream<V> convert(Function<T, V> converter) {
         return new ConversionStream<T, V>(this, converter);
     }
@@ -367,10 +384,10 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new FittedStream<T>(this, min, max);
     }
 
-    default ProceduralStream<Double> style(RNG rng, IrisStyledRange range) {
+    default ProceduralStream<Double> style(RNG rng, IrisStyledRange range, IrisData data) {
         return ProceduralStream.of((x, z) -> {
             double d = getDouble(x, z);
-            return range.get(rng, d, -d);
+            return range.get(rng, d, -d, data);
         }, Interpolated.DOUBLE);
     }
 

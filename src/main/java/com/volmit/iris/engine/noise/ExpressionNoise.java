@@ -16,16 +16,32 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.object.annotations;
+package com.volmit.iris.engine.noise;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+import com.volmit.iris.engine.object.IrisExpression;
+import com.volmit.iris.util.math.RNG;
 
-import static java.lang.annotation.ElementType.*;
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+public class ExpressionNoise implements NoiseGenerator {
+    private final RNG rng;
+    private final IrisExpression expression;
 
-@Retention(RUNTIME)
-@Target({PARAMETER, TYPE, FIELD})
-public @interface RegistryListJigsawPool {
+    public ExpressionNoise(RNG rng, IrisExpression expression) {
+        this.rng = rng;
+        this.expression = expression;
+    }
 
+    @Override
+    public double noise(double x) {
+        return expression.evaluate(rng, x, -1);
+    }
+
+    @Override
+    public double noise(double x, double z) {
+        return expression.evaluate(rng, x, z);
+    }
+
+    @Override
+    public double noise(double x, double y, double z) {
+        return expression.evaluate(rng, x, y, z);
+    }
 }

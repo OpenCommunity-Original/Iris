@@ -48,22 +48,22 @@ public class IrisMod extends IrisRegistrant {
     private int overrideFluidHeight = -1;
 
     @Desc("A list of biomes to remove")
-    @RegistryListBiome
+    @RegistryListResource(IrisBiome.class)
     @ArrayType(type = String.class, min = 1)
     private KList<String> removeBiomes = new KList<>();
 
     @Desc("A list of objects to remove")
-    @RegistryListObject
+    @RegistryListResource(IrisObject.class)
     @ArrayType(type = String.class, min = 1)
     private KList<String> removeObjects = new KList<>();
 
     @Desc("A list of regions to remove")
-    @RegistryListRegion
+    @RegistryListResource(IrisRegion.class)
     @ArrayType(type = String.class, min = 1)
     private KList<String> removeRegions = new KList<>();
 
     @Desc("A list of regions to inject")
-    @RegistryListRegion
+    @RegistryListResource(IrisRegion.class)
     @ArrayType(type = String.class, min = 1)
     private KList<String> injectRegions = new KList<>();
 
@@ -98,4 +98,14 @@ public class IrisMod extends IrisRegistrant {
     @ArrayType(min = 1, type = IrisModNoiseStyleReplacer.class)
     @Desc("Replace noise styles with other styles")
     private KList<IrisModNoiseStyleReplacer> styleReplacers = new KList<>();
+
+    @Override
+    public String getFolderName() {
+        return "mods";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Mod";
+    }
 }

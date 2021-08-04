@@ -19,17 +19,32 @@
 package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.engine.object.IrisPosition;
+import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.math.Position2;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.entity.EnderSignal;
+import org.bukkit.entity.EntityType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 
 public abstract class EngineAssignedWorldManager extends EngineAssignedComponent implements EngineWorldManager, Listener {
     private final int taskId;
+
+    public EngineAssignedWorldManager() {
+        super(null, null);
+        taskId = -1;
+    }
 
     public EngineAssignedWorldManager(Engine engine) {
         super(engine, "World");
@@ -40,7 +55,36 @@ public abstract class EngineAssignedWorldManager extends EngineAssignedComponent
     @EventHandler
     public void on(WorldSaveEvent e) {
         if (e.getWorld().equals(getTarget().getWorld().realWorld())) {
-            onSave();
+            getEngine().save();
+        }
+    }
+
+    @EventHandler
+    public void on(EntitySpawnEvent e) {
+        if (e.getEntity().getWorld().equals(getTarget().getWorld().realWorld())) {
+            if(e.getEntityType().equals(EntityType.ENDER_SIGNAL))
+            {
+                KList<Position2> p = getEngine().getDimension().getStrongholds(getEngine().getWorld().seed());
+                Position2 px = new Position2(e.getEntity().getLocation().getBlockX(), e.getEntity().getLocation().getBlockZ());
+                Position2 pr = null;
+                double d = Double.MAX_VALUE;
+
+                for(Position2 i : p)
+                {
+                    double dx = i.distance(px);
+                    if(dx < d)
+                    {
+                        d = dx;
+                        pr = i;
+                    }
+                }
+
+                if(pr != null)
+                {
+                    e.getEntity().getWorld().playSound(e.getEntity().getLocation(), Sound.ITEM_TRIDENT_THROW, 1f, 1.6f);
+                    ((EnderSignal) e.getEntity()).setTargetLocation(new Location(e.getEntity().getWorld(), pr.getX(), 40, pr.getZ()));
+                }
+            }
         }
     }
 
@@ -62,6 +106,13 @@ public abstract class EngineAssignedWorldManager extends EngineAssignedComponent
     public void on(BlockPlaceEvent e) {
         if (e.getPlayer().getWorld().equals(getTarget().getWorld().realWorld())) {
             onBlockPlace(e);
+        }
+    }
+
+    @EventHandler
+    public void on(ChunkLoadEvent e) {
+        if (e.getChunk().getWorld().equals(getTarget().getWorld().realWorld())) {
+            onChunkLoad(e.getChunk(), e.isNewChunk());
         }
     }
 

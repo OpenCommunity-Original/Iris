@@ -19,9 +19,9 @@
 package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.core.gui.components.RenderType;
 import com.volmit.iris.core.gui.components.Renderer;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.cache.Cache;
 import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.data.DataProvider;
@@ -67,8 +67,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     void setParallelism(int parallelism);
 
-    default UUID getBiomeID(int x, int z)
-    {
+    default UUID getBiomeID(int x, int z) {
         return getFramework().getComplex().getBaseBiomeIDStream().get(x, z);
     }
 
@@ -99,6 +98,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     default void save() {
         getParallax().saveAll();
+        getWorldManager().onSave();
         saveEngineData();
     }
 
@@ -117,7 +117,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
         return getTarget().getHeight();
     }
 
-    default IrisDataManager getData() {
+    default IrisData getData() {
         return getTarget().getData();
     }
 
@@ -174,7 +174,12 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
     @BlockCoordinates
     @Override
     default int getHeight(int x, int z) {
-        return getFramework().getEngineParallax().getHighest(x, z, true);
+        return getHeight(x, z, true);
+    }
+
+    @BlockCoordinates
+    default int getHeight(int x, int z, boolean ignoreFluid) {
+        return getFramework().getEngineParallax().getHighest(x, z, getData(), ignoreFluid);
     }
 
     @BlockCoordinates
@@ -406,7 +411,13 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     IrisBiome getFocus();
 
-    void hotloading();
-
     IrisEngineData getEngineData();
+
+    default IrisBiome getSurfaceBiome(Chunk c) {
+        return getSurfaceBiome((c.getX() << 4) + 8, (c.getZ() << 4) + 8);
+    }
+
+    default IrisRegion getRegion(Chunk c) {
+        return getRegion((c.getX() << 4) + 8, (c.getZ() << 4) + 8);
+    }
 }

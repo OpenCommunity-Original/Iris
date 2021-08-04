@@ -20,7 +20,7 @@ package com.volmit.iris.engine.jigsaw;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.EngineParallaxManager;
 import com.volmit.iris.engine.framework.IrisAccess;
@@ -41,7 +41,7 @@ public class PlannedStructure {
     private KList<PlannedPiece> pieces;
     private IrisJigsawStructure structure;
     private IrisPosition position;
-    private IrisDataManager data;
+    private IrisData data;
     private RNG rng;
     private boolean verbose;
     private boolean terminating;
@@ -96,13 +96,14 @@ public class PlannedStructure {
             options.setMode(i.getPiece().getPlaceMode());
         }
 
+        IrisObject vo = i.getOgObject();
         IrisObject v = i.getObject();
         int sx = (v.getW() / 2);
         int sz = (v.getD() / 2);
         int xx = i.getPosition().getX() + sx;
         int zz = i.getPosition().getZ() + sz;
         int offset = i.getPosition().getY() - startHeight;
-        int height = placer.getHighest(xx, zz) + offset + (v.getH() / 2);
+        int height = placer.getHighest(xx, zz, getData()) + offset + (v.getH() / 2);
 
         if (options.getMode().equals(ObjectPlaceMode.PAINT) || options.isVacuum()) {
             height = -1;
@@ -110,7 +111,7 @@ public class PlannedStructure {
 
         int id = rng.i(0, Integer.MAX_VALUE);
 
-        int h = v.place(xx, height, zz, placer, options, rng, (b) -> {
+        int h = vo.place(xx, height, zz, placer, options, rng, (b) -> {
             int xf = b.getX();
             int yf = b.getY();
             int zf = b.getZ();
@@ -133,7 +134,7 @@ public class PlannedStructure {
                 }
 
                 if (options.getMode().equals(ObjectPlaceMode.PAINT) || options.isVacuum()) {
-                    p.setY(placer.getHighest(xx, zz) + offset + (v.getH() / 2));
+                    p.setY(placer.getHighest(xx, zz, getData()) + offset + (v.getH() / 2));
                 } else {
                     p.setY(height);
                 }

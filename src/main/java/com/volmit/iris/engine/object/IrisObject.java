@@ -19,7 +19,7 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.framework.placer.HeightmapObjectPlacer;
@@ -73,6 +73,20 @@ public class IrisObject extends IrisRegistrant {
     private transient volatile boolean smartBored = false;
     private transient IrisLock lock = new IrisLock("Preloadcache");
     private transient AtomicCache<AxisAlignedBB> aabb = new AtomicCache<>();
+
+
+    public IrisObject(int w, int h, int d) {
+        blocks = new KMap<>();
+        states = new KMap<>();
+        this.w = w;
+        this.h = h;
+        this.d = d;
+        center = new BlockVector(w / 2, h / 2, d / 2);
+    }
+
+    public IrisObject() {
+        this(0, 0, 0);
+    }
 
     public AxisAlignedBB getAABB() {
         return aabb.aquire(() -> getAABBFor(new BlockVector(w, h, d)));
@@ -212,15 +226,6 @@ public class IrisObject extends IrisRegistrant {
         }
 
         return o;
-    }
-
-    public IrisObject(int w, int h, int d) {
-        blocks = new KMap<>();
-        states = new KMap<>();
-        this.w = w;
-        this.h = h;
-        this.d = d;
-        center = new BlockVector(w / 2, h / 2, d / 2);
     }
 
     @SuppressWarnings({"resource", "RedundantSuppression"})
@@ -404,23 +409,23 @@ public class IrisObject extends IrisRegistrant {
         }
     }
 
-    public int place(int x, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisDataManager rdata) {
+    public int place(int x, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisData rdata) {
         return place(x, -1, z, placer, config, rng, rdata);
     }
 
-    public int place(int x, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, CarveResult c, IrisDataManager rdata) {
+    public int place(int x, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, CarveResult c, IrisData rdata) {
         return place(x, -1, z, placer, config, rng, null, c, rdata);
     }
 
-    public int place(int x, int yv, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisDataManager rdata) {
+    public int place(int x, int yv, int z, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisData rdata) {
         return place(x, yv, z, placer, config, rng, null, null, rdata);
     }
 
-    public int place(Location loc, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisDataManager rdata) {
+    public int place(Location loc, IObjectPlacer placer, IrisObjectPlacement config, RNG rng, IrisData rdata) {
         return place(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ(), placer, config, rng, rdata);
     }
 
-    public int place(int x, int yv, int z, IObjectPlacer oplacer, IrisObjectPlacement config, RNG rng, Consumer<BlockPosition> listener, CarveResult c, IrisDataManager rdata) {
+    public int place(int x, int yv, int z, IObjectPlacer oplacer, IrisObjectPlacement config, RNG rng, Consumer<BlockPosition> listener, CarveResult c, IrisData rdata) {
         IObjectPlacer placer = (config.getHeightmap() != null) ? new HeightmapObjectPlacer(rng, x, yv, z, config, oplacer) : oplacer;
 
         if (config.isSmartBore()) {
@@ -442,14 +447,14 @@ public class IrisObject extends IrisRegistrant {
 
         if (yv < 0) {
             if (config.getMode().equals(ObjectPlaceMode.CENTER_HEIGHT)) {
-                y = (c != null ? c.getSurface() : placer.getHighest(x, z, config.isUnderwater())) + rty;
+                y = (c != null ? c.getSurface() : placer.getHighest(x, z, getLoader(), config.isUnderwater())) + rty;
             } else if (config.getMode().equals(ObjectPlaceMode.MAX_HEIGHT) || config.getMode().equals(ObjectPlaceMode.STILT)) {
                 BlockVector offset = new BlockVector(config.getTranslate().getX(), config.getTranslate().getY(), config.getTranslate().getZ());
                 BlockVector rotatedDimensions = config.getRotation().rotate(new BlockVector(getW(), getH(), getD()), spinx, spiny, spinz).clone();
 
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i++) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j++) {
-                        int h = placer.getHighest(i, j, config.isUnderwater()) + rty;
+                        int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
                         if (h > y) {
                             y = h;
@@ -462,7 +467,7 @@ public class IrisObject extends IrisRegistrant {
 
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i += (rotatedDimensions.getBlockX() / 2) + 1) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j += (rotatedDimensions.getBlockZ() / 2) + 1) {
-                        int h = placer.getHighest(i, j, config.isUnderwater()) + rty;
+                        int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
                         if (h > y) {
                             y = h;
@@ -476,7 +481,7 @@ public class IrisObject extends IrisRegistrant {
 
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i++) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j++) {
-                        int h = placer.getHighest(i, j, config.isUnderwater()) + rty;
+                        int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
                         if (h < y) {
                             y = h;
@@ -490,7 +495,7 @@ public class IrisObject extends IrisRegistrant {
 
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i += (rotatedDimensions.getBlockX() / 2) + 1) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j += (rotatedDimensions.getBlockZ() / 2) + 1) {
-                        int h = placer.getHighest(i, j, config.isUnderwater()) + rty;
+                        int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
                         if (h < y) {
                             y = h;
@@ -498,7 +503,7 @@ public class IrisObject extends IrisRegistrant {
                     }
                 }
             } else if (config.getMode().equals(ObjectPlaceMode.PAINT)) {
-                y = placer.getHighest(x, z, config.isUnderwater()) + rty;
+                y = placer.getHighest(x, z, getLoader(), config.isUnderwater()) + rty;
             }
         } else {
             y = yv;
@@ -594,12 +599,12 @@ public class IrisObject extends IrisRegistrant {
                 zz = z + (int) Math.round(i.getZ());
 
                 if (warped) {
-                    xx += config.warp(rng, i.getX() + x, i.getY() + y, i.getZ() + z);
-                    zz += config.warp(rng, i.getZ() + z, i.getY() + y, i.getX() + x);
+                    xx += config.warp(rng, i.getX() + x, i.getY() + y, i.getZ() + z, getLoader());
+                    zz += config.warp(rng, i.getZ() + z, i.getY() + y, i.getX() + x, getLoader());
                 }
 
                 if (yv < 0 && (config.getMode().equals(ObjectPlaceMode.PAINT))) {
-                    yy = (int) Math.round(i.getY()) + Math.floorDiv(h, 2) + placer.getHighest(xx, zz, config.isUnderwater());
+                    yy = (int) Math.round(i.getY()) + Math.floorDiv(h, 2) + placer.getHighest(xx, zz, getLoader(), config.isUnderwater());
                 }
 
                 if (heightmap != null) {
@@ -674,11 +679,11 @@ public class IrisObject extends IrisRegistrant {
                 zz = z + (int) Math.round(i.getZ());
 
                 if (warped) {
-                    xx += config.warp(rng, i.getX() + x, i.getY() + y, i.getZ() + z);
-                    zz += config.warp(rng, i.getZ() + z, i.getY() + y, i.getX() + x);
+                    xx += config.warp(rng, i.getX() + x, i.getY() + y, i.getZ() + z, getLoader());
+                    zz += config.warp(rng, i.getZ() + z, i.getY() + y, i.getX() + x, getLoader());
                 }
 
-                int yg = placer.getHighest(xx, zz, config.isUnderwater());
+                int yg = placer.getHighest(xx, zz, getLoader(), config.isUnderwater());
 
                 if (yv >= 0 && config.isBottom()) {
                     y += Math.floorDiv(h, 2);
@@ -720,13 +725,14 @@ public class IrisObject extends IrisRegistrant {
         KMap<BlockVector, BlockData> d = new KMap<>();
 
         for (BlockVector i : getBlocks().keySet()) {
-            d.put(r.rotate(i.clone(), spinx, spiny, spinz), r.rotate(Objects.requireNonNull(getBlocks().get(i)).clone(), spinx, spiny, spinz));
+            d.put(r.rotate(i.clone(), spinx, spiny, spinz), r.rotate(getBlocks().get(i).clone(),
+                    spinx, spiny, spinz));
         }
 
         KMap<BlockVector, TileData<? extends TileState>> dx = new KMap<>();
 
         for (BlockVector i : getStates().keySet()) {
-            dx.put(r.rotate(i.clone(), spinx, spiny, spinz), Objects.requireNonNull(getStates().get(i)));
+            dx.put(r.rotate(i.clone(), spinx, spiny, spinz), getStates().get(i));
         }
 
         blocks = d;
@@ -781,6 +787,8 @@ public class IrisObject extends IrisRegistrant {
 
         IrisPosition l1 = getAABB().max();
         IrisPosition l2 = getAABB().min();
+        @SuppressWarnings({"unchecked", "rawtypes"}) HashMap<BlockVector, BlockData> placeBlock = new HashMap();
+
         Vector center = getCenter();
         if (getH() == 2) {
             center = center.setY(center.getBlockY() + 0.5);
@@ -791,14 +799,13 @@ public class IrisObject extends IrisRegistrant {
         if (getD() == 2) {
             center = center.setZ(center.getBlockZ() + 0.5);
         }
-        @SuppressWarnings({"unchecked", "rawtypes"}) HashMap<BlockVector, BlockData> placeBlock = new HashMap();
 
         IrisObject oo = new IrisObject((int) Math.ceil((w * scale) + (scale * 2)), (int) Math.ceil((h * scale) + (scale * 2)), (int) Math.ceil((d * scale) + (scale * 2)));
 
         for (Map.Entry<BlockVector, BlockData> entry : blocks.entrySet()) {
             BlockData bd = entry.getValue();
             placeBlock.put(entry.getKey().clone().add(HALF).subtract(center)
-                    .multiply(scale).toBlockVector(), bd);
+                    .multiply(scale).add(sm1).toBlockVector(), bd);
         }
 
         for (Map.Entry<BlockVector, BlockData> entry : placeBlock.entrySet()) {
@@ -963,5 +970,15 @@ public class IrisObject extends IrisRegistrant {
 
     public int volume() {
         return blocks.size();
+    }
+
+    @Override
+    public String getFolderName() {
+        return "objects";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Object";
     }
 }

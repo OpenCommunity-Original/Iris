@@ -19,7 +19,7 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.data.DataProvider;
@@ -46,7 +46,7 @@ import org.bukkit.block.data.BlockData;
 @Desc("Represents an iris object placer. It places objects.")
 @Data
 public class IrisObjectPlacement {
-    @RegistryListObject
+    @RegistryListResource(IrisObject.class)
     @Required
     @ArrayType(min = 1, type = String.class)
     @Desc("List of objects to place")
@@ -57,6 +57,10 @@ public class IrisObjectPlacement {
 
     @Desc("Limit the max height or min height of placement.")
     private IrisObjectLimit clamp = new IrisObjectLimit();
+
+    @ArrayType(min = 1, type = IrisFeaturePotential.class)
+    @Desc("Place additional noise features in the object's place location")
+    private KList<IrisFeaturePotential> addFeatures = new KList<>();
 
     @MinNumber(0)
     @MaxNumber(1)
@@ -161,6 +165,7 @@ public class IrisObjectPlacement {
         p.setWarp(warp);
         p.setBore(bore);
         p.setMeld(meld);
+        p.setAddFeatures(addFeatures.copy());
         p.setWaterloggable(waterloggable);
         p.setOnwater(onwater);
         p.setSmartBore(smartBore);
@@ -180,13 +185,13 @@ public class IrisObjectPlacement {
 
     private final transient AtomicCache<CNG> surfaceWarp = new AtomicCache<>();
 
-    public CNG getSurfaceWarp(RNG rng) {
+    public CNG getSurfaceWarp(RNG rng, IrisData data) {
         return surfaceWarp.aquire(() ->
-                getWarp().create(rng));
+                getWarp().create(rng, data));
     }
 
-    public double warp(RNG rng, double x, double y, double z) {
-        return getSurfaceWarp(rng).fitDouble(-(getWarp().getMultiplier() / 2D), (getWarp().getMultiplier() / 2D), x, y, z);
+    public double warp(RNG rng, double x, double y, double z, IrisData data) {
+        return getSurfaceWarp(rng, data).fitDouble(-(getWarp().getMultiplier() / 2D), (getWarp().getMultiplier() / 2D), x, y, z);
     }
 
     public int getTriesForChunk(RNG random) {
@@ -213,13 +218,15 @@ public class IrisObjectPlacement {
         return getMode().equals(ObjectPlaceMode.VACUUM);
     }
 
+    public boolean usesFeatures() {
+        return isVacuum() || getAddFeatures().isNotEmpty();
+    }
+
     private transient AtomicCache<TableCache> cache = new AtomicCache<>();
 
     public boolean matches(IrisTreeSize size, TreeType type) {
-        for(IrisTree i : getTrees())
-        {
-            if(i.matches(size, type))
-            {
+        for (IrisTree i : getTrees()) {
+            if (i.matches(size, type)) {
                 return true;
             }
         }
@@ -233,7 +240,7 @@ public class IrisObjectPlacement {
         final transient KMap<Material, KMap<BlockData, WeightedRandom<IrisLootTable>>> exact = new KMap<>();
     }
 
-    private TableCache getCache(IrisDataManager manager) {
+    private TableCache getCache(IrisData manager) {
         return cache.aquire(() -> {
             TableCache tc = new TableCache();
 
@@ -282,7 +289,7 @@ public class IrisObjectPlacement {
      * @param dataManager Iris Data Manager
      * @return The loot table it should use.
      */
-    public IrisLootTable getTable(BlockData data, IrisDataManager dataManager) {
+    public IrisLootTable getTable(BlockData data, IrisData dataManager) {
         TableCache cache = getCache(dataManager);
 
         if (B.isStorageChest(data)) {

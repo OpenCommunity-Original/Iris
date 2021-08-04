@@ -22,7 +22,6 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.annotations.ArrayType;
 import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.RegistryListMythical;
 import com.volmit.iris.engine.object.annotations.Required;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.format.C;
@@ -63,10 +62,6 @@ public class IrisEntity extends IrisRegistrant {
     @Desc("The type of entity to spawn. To spawn a mythic mob, set this type to unknown and define mythic type.")
     private EntityType type = EntityType.UNKNOWN;
 
-    @RegistryListMythical
-    @Desc("The type of mythic mob (if mythic mobs is installed). If this is set, make sure to set 'type' to UNKNOWN")
-    private String mythicalType = "";
-
     @Desc("The custom name of this entity")
     private String customName = "";
 
@@ -95,7 +90,7 @@ public class IrisEntity extends IrisRegistrant {
     private boolean pickupItems = false;
 
     @Desc("Should this entity be removed when far away")
-    private boolean removable = true;
+    private boolean removable = false;
 
     @Desc("Entity helmet equipment")
     private IrisLoot helmet = null;
@@ -141,22 +136,38 @@ public class IrisEntity extends IrisRegistrant {
     @Desc("The this entity is ageable, set it's baby status")
     private boolean baby = false;
 
+    @Desc("If the entity should never be culled. Useful for Jigsaws")
+    private boolean keepEntity = false;
+
+    @Desc("The surface type to spawn this mob on")
+    private IrisSurface surface = IrisSurface.LAND;
+
     public Entity spawn(Engine gen, Location at) {
         return spawn(gen, at, new RNG(at.hashCode()));
     }
 
     public Entity spawn(Engine gen, Location at, RNG rng) {
         Entity e = doSpawn(at);
+
+        if(e == null)
+        {
+            return null;
+        }
+
         e.setCustomName(getCustomName() != null ? C.translateAlternateColorCodes('&', getCustomName()) : null);
         e.setCustomNameVisible(isCustomNameVisible());
         e.setGlowing(isGlowing());
         e.setGravity(isGravity());
         e.setInvulnerable(isInvulnerable());
         e.setSilent(isSilent());
+        e.setPersistent(isKeepEntity());
 
         int gg = 0;
         for (IrisEntity i : passengers) {
-            e.addPassenger(i.spawn(gen, at, rng.nextParallelRNG(234858 + gg++)));
+            Entity passenger = i.spawn(gen, at, rng.nextParallelRNG(234858 + gg++));
+            if (!Bukkit.isPrimaryThread()) {
+                J.s(() -> e.addPassenger(passenger));
+            }
         }
 
         if (e instanceof Attributable) {
@@ -259,8 +270,7 @@ public class IrisEntity extends IrisRegistrant {
             m.setAware(isAware());
         }
 
-        if(spawnEffect != null)
-        {
+        if (spawnEffect != null) {
             spawnEffect.apply(e);
         }
 
@@ -272,30 +282,47 @@ public class IrisEntity extends IrisRegistrant {
             // Someone called spawn (worldedit maybe?) on a non server thread
             // Due to the structure of iris, we will call it sync and busy wait until it's done.
             AtomicReference<Entity> ae = new AtomicReference<>();
-            J.s(() -> ae.set(doSpawn(at)));
+
+            try
+            {
+                J.s(() -> ae.set(doSpawn(at)));
+            }
+
+            catch(Throwable e)
+            {
+                return null;
+            }
             PrecisionStopwatch p = PrecisionStopwatch.start();
 
             while (ae.get() == null) {
-                J.sleep(3);
+                J.sleep(25);
+
+                if(p.getMilliseconds() > 500)
+                {
+                    return null;
+                }
             }
 
             return ae.get();
         }
 
-        if (isMythical()) {
-            return Iris.linkMythicMobs.spawn(getMythicalType(), at);
-        }
 
         return at.getWorld().spawnEntity(at, getType());
-    }
-
-    public boolean isMythical() {
-        return Iris.linkMythicMobs.supported() && !getMythicalType().trim().isEmpty();
     }
 
     public boolean isCitizens() {
         return false;
 
         // TODO: return Iris.linkCitizens.supported() && someType is not empty;
+    }
+
+    @Override
+    public String getFolderName() {
+        return "entities";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Entity";
     }
 }

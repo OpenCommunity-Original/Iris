@@ -18,22 +18,20 @@
 
 package com.volmit.iris.engine.framework;
 
-import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.core.gui.components.Renderer;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.data.DataProvider;
 import com.volmit.iris.engine.object.IrisBiome;
 import com.volmit.iris.engine.object.IrisObjectPlacement;
 import com.volmit.iris.engine.object.IrisRegion;
 import com.volmit.iris.engine.parallax.ParallaxAccess;
 
-import java.util.UUID;
-
 public interface GeneratorAccess extends DataProvider, Renderer {
     IrisRegion getRegion(int x, int z);
 
     ParallaxAccess getParallaxAccess();
 
-    IrisDataManager getData();
+    IrisData getData();
 
     IrisBiome getCaveBiome(int x, int z);
 

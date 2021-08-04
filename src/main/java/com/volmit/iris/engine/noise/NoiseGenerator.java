@@ -28,4 +28,8 @@ public interface NoiseGenerator {
     default boolean isStatic() {
         return false;
     }
+
+    default boolean isNoScale() {
+        return false;
+    }
 }

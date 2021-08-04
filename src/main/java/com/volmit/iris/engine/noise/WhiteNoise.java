@@ -31,6 +31,10 @@ public class WhiteNoise implements NoiseGenerator {
         return true;
     }
 
+    public boolean isNoScale() {
+        return true;
+    }
+
     private double f(double m) {
         return (m % 8192) * 1024;
     }

@@ -19,13 +19,14 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.data.DataProvider;
 import com.volmit.iris.engine.noise.CNG;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.io.IO;
+import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.Position2;
 import com.volmit.iris.util.math.RNG;
 import lombok.AllArgsConstructor;
@@ -63,9 +64,15 @@ public class IrisDimension extends IrisRegistrant {
     @Desc("Create an inverted dimension in the sky (like the nether)")
     private IrisDimension sky = null;
 
-    @RegistryListJigsaw
+    @RegistryListResource(IrisJigsawStructure.class)
     @Desc("If defined, Iris will place the given jigsaw structure where minecraft should place the overworld stronghold.")
     private String stronghold;
+
+    @Desc("The average distance between strongholds")
+    private int strongholdJumpDistance = 1280;
+
+    @Desc("Define the maximum strongholds to place")
+    private int maxStrongholds = 14;
 
     @Desc("Improves the biome grid variation by shuffling the cell grid more depending on the seed. This makes biomes across multiple seeds look far different than before.")
     private boolean aggressiveBiomeReshuffle = false;
@@ -73,6 +80,8 @@ public class IrisDimension extends IrisRegistrant {
     @Desc("Tree growth override settings")
     private IrisTreeSettings treeSettings = new IrisTreeSettings();
 
+    @Desc("Define iris cavern zones")
+    private IrisCaverns caverns = new IrisCaverns();
 
     @Desc("Instead of a flat bottom, applies a clamp (using this noise style) to the bottom instead of a flat bottom. Useful for carving out center-dimensions in a dimension composite world.")
     private IrisShapedGeneratorStyle undercarriage = null;
@@ -82,7 +91,7 @@ public class IrisDimension extends IrisRegistrant {
 
     @Desc("Spawn Entities in this dimension over time. Iris will continually replenish these mobs just like vanilla does.")
     @ArrayType(min = 1, type = String.class)
-    @RegistryListSpawner
+    @RegistryListResource(IrisSpawner.class)
     private KList<String> entitySpawners = new KList<>();
 
     @Desc("Add specific features in exact positions")
@@ -186,7 +195,7 @@ public class IrisDimension extends IrisRegistrant {
     @Desc("The world environment")
     private Environment environment = Environment.NORMAL;
 
-    @RegistryListRegion
+    @RegistryListResource(IrisRegion.class)
     @Required
     @ArrayType(min = 1, type = String.class)
     @Desc("Define all of the regions to include in this dimension. Dimensions -> Regions -> Biomes -> Objects etc")
@@ -202,11 +211,11 @@ public class IrisDimension extends IrisRegistrant {
     @Desc("The fluid height for this dimension")
     private int fluidHeight = 63;
 
-    @RegistryListBiome
+    @RegistryListResource(IrisBiome.class)
     @Desc("Keep this either undefined or empty. Setting any biome name into this will force iris to only generate the specified biome. Great for testing.")
     private String focus = "";
 
-    @RegistryListBiome
+    @RegistryListResource(IrisBiome.class)
     @Desc("Keep this either undefined or empty. Setting any region name into this will force iris to only generate the specified region. Great for testing.")
     private String focusRegion = "";
 
@@ -306,6 +315,27 @@ public class IrisDimension extends IrisRegistrant {
     private final transient AtomicCache<Double> cosr = new AtomicCache<>();
     private final transient AtomicCache<Double> rad = new AtomicCache<>();
     private final transient AtomicCache<Boolean> featuresUsed = new AtomicCache<>();
+    private final transient AtomicCache<KList<Position2>> strongholdsCache = new AtomicCache<>();
+
+    public KList<Position2> getStrongholds(long seed)
+    {
+        return strongholdsCache.aquire(() -> {
+            KList<Position2> pos = new KList<>();
+            int jump = strongholdJumpDistance;
+            RNG rng = new RNG((seed * 223) + 12945);
+
+            for(int i = 0; i < maxStrongholds; i++)
+            {
+                int m = i + 1;
+                pos.add(new Position2(
+                        (int) ((rng.i( jump * i) + (jump * i)) * (rng.b() ? -1D : 1D)),
+                        (int) ((rng.i( jump * i) + (jump * i)) * (rng.b() ? -1D : 1D))
+                ));
+            }
+
+            return pos;
+        });
+    }
 
     public boolean hasSky() {
         return getSky() != null;
@@ -324,10 +354,10 @@ public class IrisDimension extends IrisRegistrant {
         return rad.aquire(() -> Math.toRadians(dimensionAngleDeg));
     }
 
-    public boolean isCarved(int x, int y, int z, RNG rng, int terrainHeight) {
+    public boolean isCarved(IrisData data, int x, int y, int z, RNG rng, int terrainHeight) {
         if (isCarving() && terrainHeight > getFluidHeight() || y < terrainHeight) {
             for (IrisCarveLayer j : getCarveLayers()) {
-                if (j.isCarved(rng, x, y, z)) {
+                if (j.isCarved(rng, data, x, y, z)) {
                     return true;
                 }
             }
@@ -370,7 +400,7 @@ public class IrisDimension extends IrisRegistrant {
         KList<IrisRegion> r = new KList<>();
 
         for (String i : getRegions()) {
-            r.add(IrisDataManager.loadAnyRegion(i));
+            r.add(IrisData.loadAnyRegion(i));
         }
 
         return r;
@@ -498,5 +528,15 @@ public class IrisDimension extends IrisRegistrant {
             Iris.verbose("Not using parallax noise features (they arent used in this dimension)");
             return false;
         });
+    }
+
+    @Override
+    public String getFolderName() {
+        return "dimensions";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Dimension";
     }
 }

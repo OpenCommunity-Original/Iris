@@ -105,6 +105,10 @@ public class IrisCaveModifier extends EngineAssignedModifier<BlockData> {
         }
     }
 
+    public KList<CaveResult> genCaves(double wxx, double wzz) {
+        return genCaves(wxx, wzz, 0, 0, null);
+    }
+
     public KList<CaveResult> genCaves(double wxx, double wzz, int x, int z, Hunk<BlockData> data) {
         if (!getDimension().isCaves()) {
             return EMPTY;
@@ -141,12 +145,12 @@ public class IrisCaveModifier extends EngineAssignedModifier<BlockData> {
         };
 
         int surface = (int) Math.round(getComplex().getHeightStream().get(wxx, wzz));
-        double wx = wxx + layer.getHorizontalSlope().get(rng, wxx, wzz);
-        double wz = wzz + layer.getHorizontalSlope().get(rng, -wzz, -wxx);
+        double wx = wxx + layer.getHorizontalSlope().get(rng, getData(), wxx, wzz);
+        double wz = wzz + layer.getHorizontalSlope().get(rng, getData(), -wzz, -wxx);
         double baseWidth = (14 * scale);
         double distanceCheck = 0.0132 * baseWidth;
         double distanceTake = 0.0022 * baseWidth;
-        double caveHeightNoise = layer.getVerticalSlope().get(rng, wxx, wzz);
+        double caveHeightNoise = layer.getVerticalSlope().get(rng, getData(), wxx, wzz);
 
         if (caveHeightNoise > 259 || caveHeightNoise < -1) {
             return;

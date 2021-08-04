@@ -210,10 +210,15 @@ public class IrisGenerator extends IrisRegistrant {
     }
 
     public double getHeight(double rx, double rz, long superSeed) {
-        return getHeight(rx, 0, rz, superSeed);
+        return getHeight(rx, 0, rz, superSeed, true);
     }
 
+
     public double getHeight(double rx, double ry, double rz, long superSeed) {
+        return getHeight(rx, ry, rz, superSeed, false);
+    }
+
+    public double getHeight(double rx, double ry, double rz, long superSeed, boolean no3d) {
         if (composite.isEmpty()) {
             Iris.warn("Useless Generator: Composite is empty in " + getLoadKey());
             return 0;
@@ -225,17 +230,17 @@ public class IrisGenerator extends IrisRegistrant {
 
         for (IrisNoiseGenerator i : composite) {
             if (multiplicitive) {
-                h *= i.getNoise(seed + superSeed + hc, (rx + offsetX) / zoom, (rz + offsetZ) / zoom);
+                h *= i.getNoise(seed + superSeed + hc, (rx + offsetX) / zoom, (rz + offsetZ) / zoom, getLoader());
             } else {
                 tp += i.getOpacity();
-                h += i.getNoise(seed + superSeed + hc, (rx + offsetX) / zoom, (rz + offsetZ) / zoom);
+                h += i.getNoise(seed + superSeed + hc, (rx + offsetX) / zoom, (rz + offsetZ) / zoom, getLoader());
             }
         }
 
         double v = multiplicitive ? h * opacity : (h / tp) * opacity;
 
         if (Double.isNaN(v)) {
-            Iris.warn("Nan value on gen: " + getLoadKey() + ": H = " + h + " TP = " + tp + " OPACITY = " + opacity + " ZOOM = " + zoom);
+            v = 0;
         }
 
         v = hasCliffs() ? cliff(rx, rz, v, superSeed + 294596 + hc) : v;
@@ -255,7 +260,7 @@ public class IrisGenerator extends IrisRegistrant {
 
     public double getCliffHeight(double rx, double rz, double superSeed) {
         int hc = (int) ((cliffHeightMin * 10) + 10 + cliffHeightMax * seed + offsetX + offsetZ);
-        double h = cliffHeightGenerator.getNoise((long) (seed + superSeed + hc), (rx + offsetX) / zoom, (rz + offsetZ) / zoom);
+        double h = cliffHeightGenerator.getNoise((long) (seed + superSeed + hc), (rx + offsetX) / zoom, (rz + offsetZ) / zoom, getLoader());
         return IrisInterpolation.lerp(cliffHeightMin, cliffHeightMax, h);
     }
 
@@ -277,5 +282,15 @@ public class IrisGenerator extends IrisRegistrant {
         }
 
         return g;
+    }
+
+    @Override
+    public String getFolderName() {
+        return "generators";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Generator";
     }
 }

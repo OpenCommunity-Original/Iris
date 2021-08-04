@@ -21,10 +21,14 @@ package com.volmit.iris.engine;
 import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.core.events.IrisEngineHotloadEvent;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.framework.*;
 import com.volmit.iris.engine.hunk.Hunk;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.object.IrisBiome;
+import com.volmit.iris.engine.object.IrisBiomePaletteLayer;
+import com.volmit.iris.engine.object.IrisDecorator;
+import com.volmit.iris.engine.object.IrisObjectPlacement;
 import com.volmit.iris.engine.object.engine.IrisEngineData;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -43,7 +47,6 @@ import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.generator.BlockPopulator;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
@@ -92,13 +95,14 @@ public class IrisEngine extends BlockPopulator implements Engine {
     @Getter
     private double maxBiomeDecoratorDensity;
 
-    private AtomicCache<IrisEngineData> engineData = new AtomicCache<>();
+    private final AtomicCache<IrisEngineData> engineData = new AtomicCache<>();
 
     public IrisEngine(EngineTarget target, EngineCompound compound, int index) {
         Iris.info("Initializing Engine: " + target.getWorld().name() + "/" + target.getDimension().getLoadKey() + " (" + target.getHeight() + " height)");
         metrics = new EngineMetrics(32);
-        getEngineData();
         this.target = target;
+        getData().setEngine(this);
+        getEngineData();
         this.framework = new IrisEngineFramework(this);
         worldManager = new IrisWorldManager(this);
         this.compound = compound;
@@ -110,6 +114,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         effects = new IrisEngineEffects(this);
         art = J.ar(effects::tickRandomPlayer, 0);
         J.a(this::computeBiomeMaxes);
+        Iris.callEvent(new IrisEngineHotloadEvent(this));
     }
 
     @Override
@@ -117,8 +122,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         return engineData.aquire(() -> {
             File f = new File(getWorld().worldFolder(), "iris/engine-data/" + getDimension().getLoadKey() + "-" + getIndex() + ".json");
 
-            if(!f.exists())
-            {
+            if (!f.exists()) {
                 try {
                     f.getParentFile().mkdirs();
                     IO.writeAll(f, new Gson().toJson(new IrisEngineData()));
@@ -127,13 +131,9 @@ public class IrisEngine extends BlockPopulator implements Engine {
                 }
             }
 
-            try
-            {
+            try {
                 return new Gson().fromJson(IO.readAll(f), IrisEngineData.class);
-            }
-
-            catch(Throwable e)
-            {
+            } catch (Throwable e) {
                 e.printStackTrace();
             }
 
@@ -221,6 +221,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
                 }
                 case ISLANDS -> {
                     getFramework().getTerrainActuator().actuate(x, z, vblocks, multicore);
+
                 }
             }
 
@@ -264,15 +265,9 @@ public class IrisEngine extends BlockPopulator implements Engine {
         return getData().getBiomeLoader().load(getDimension().getFocus());
     }
 
-    @Override
-    public void hotloading() {
-        getEngineData().getStatistics().hotloaded();
-        close();
-    }
-
     @ChunkCoordinates
     @Override
-    public void populate(@NotNull World world, @NotNull Random random, @NotNull Chunk c) {
+    public void populate(World world, Random random, Chunk c) {
         updateChunk(c);
         placeTiles(c);
     }
@@ -296,6 +291,8 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
     @Override
     public void hotload() {
+        Iris.callEvent(new IrisEngineHotloadEvent(this));
+        getEngineData().getStatistics().hotloaded();
         cacheId = RNG.r.nextInt();
     }
 }

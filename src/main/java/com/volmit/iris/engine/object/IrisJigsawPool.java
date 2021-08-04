@@ -20,7 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.engine.object.annotations.ArrayType;
 import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.RegistryListJigsawPiece;
+import com.volmit.iris.engine.object.annotations.RegistryListResource;
 import com.volmit.iris.engine.object.annotations.Required;
 import com.volmit.iris.util.collection.KList;
 import lombok.AllArgsConstructor;
@@ -38,9 +38,19 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 public class IrisJigsawPool extends IrisRegistrant {
-    @RegistryListJigsawPiece
+    @RegistryListResource(IrisJigsawPiece.class)
     @Required
     @ArrayType(min = 1, type = String.class)
     @Desc("A list of structure piece pools")
     private KList<String> pieces = new KList<>();
+
+    @Override
+    public String getFolderName() {
+        return "jigsaw-pools";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Jigsaw Pool";
+    }
 }

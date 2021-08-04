@@ -18,6 +18,7 @@
 
 package com.volmit.iris.engine.object;
 
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.interpolation.IrisInterpolation;
 import com.volmit.iris.engine.noise.CNG;
@@ -25,6 +26,8 @@ import com.volmit.iris.engine.object.annotations.Desc;
 import com.volmit.iris.engine.object.annotations.MaxNumber;
 import com.volmit.iris.engine.object.annotations.MinNumber;
 import com.volmit.iris.engine.object.annotations.Required;
+import com.volmit.iris.engine.stream.ProceduralStream;
+import com.volmit.iris.engine.stream.interpolation.Interpolated;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
 import lombok.AllArgsConstructor;
@@ -62,18 +65,34 @@ public class IrisCarveLayer {
     @Desc("The threshold used as: \n\ncarved = noise(x,y,z) > threshold")
     private double threshold = 0.5;
 
+    private final transient AtomicCache<ProceduralStream<Boolean>> streamCache = new AtomicCache<>();
+    private final transient AtomicCache<ProceduralStream<Double>> rawStreamCache = new AtomicCache<>();
     private final transient AtomicCache<CNG> cng = new AtomicCache<>();
 
-    public boolean isCarved(RNG rng, double x, double y, double z) {
+    public boolean isCarved(RNG rng, IrisData data, double x, double y, double z) {
         if (y > getMaxHeight() || y < getMinHeight()) {
             return false;
         }
 
         double opacity = Math.pow(IrisInterpolation.sinCenter(M.lerpInverse(getMinHeight(), getMaxHeight(), y)), 4);
-        return cng.aquire(() -> getStyle().create(rng.nextParallelRNG(-2340 * getMaxHeight() * getMinHeight()))).fitDouble(0D, 1D, x, y, z) * opacity > getThreshold();
+        return getCng(rng, data).fitDouble(0D, 1D, x, y, z) * opacity > getThreshold();
     }
 
-    public boolean isCarved2(RNG rng, double x, double y, double z) {
+    public ProceduralStream<Boolean> stream(RNG rng, IrisData data) {
+        return streamCache.aquire(() -> ProceduralStream.of((x, y, z) -> isCarved(rng, data, x, y, z), Interpolated.BOOLEAN));
+    }
+
+    public ProceduralStream<Double> rawStream(RNG rng, IrisData data) {
+        return rawStreamCache.aquire(() -> ProceduralStream.of((x, y, z) -> {
+            return getCng(rng, data).fitDouble(0D, 1D, x, y, z) * Math.pow(IrisInterpolation.sinCenter(M.lerpInverse(getMinHeight(), getMaxHeight(), y)), 4);
+        }, Interpolated.DOUBLE));
+    }
+
+    public CNG getCng(RNG rng, IrisData data) {
+        return cng.aquire(() -> getStyle().create(rng.nextParallelRNG(-2340 * getMaxHeight() * getMinHeight()), data));
+    }
+
+    public boolean isCarved2(RNG rng, IrisData data, double x, double y, double z) {
         if (y > getMaxHeight() || y < getMinHeight()) {
             return false;
         }
@@ -87,6 +106,6 @@ public class IrisCarveLayer {
             opacity = IrisInterpolation.bezier(1D - M.lerpInverse(maxHeight - innerRange, getMaxHeight(), y));
         }
 
-        return cng.aquire(() -> getStyle().create(rng.nextParallelRNG(-2340 * getMaxHeight() * getMinHeight()))).fitDouble(0D, 1D, x, y, z) * opacity > getThreshold();
+        return cng.aquire(() -> getStyle().create(rng.nextParallelRNG(-2340 * getMaxHeight() * getMinHeight()), data)).fitDouble(0D, 1D, x, y, z) * opacity > getThreshold();
     }
 }

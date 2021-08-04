@@ -29,6 +29,7 @@ import com.volmit.iris.engine.parallel.MultiBurst;
 import com.volmit.iris.engine.stream.interpolation.Interpolated;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.function.*;
+import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.oldnbt.ByteArrayTag;
 import org.bukkit.Chunk;
 import org.bukkit.block.Biome;
@@ -42,6 +43,7 @@ import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 @SuppressWarnings("ALL")
@@ -56,6 +58,18 @@ public interface Hunk<T> {
      */
     static <T> Hunk<T> view(Hunk<T> src) {
         return new HunkView<T>(src);
+    }
+
+    static <A, B> Hunk<B> convertedReadView(Hunk<A> src, Function<A, B> reader) {
+        return new FunctionalHunkView<A, B>(src, reader, null);
+    }
+
+    static <A, B> Hunk<B> convertedWriteView(Hunk<A> src, Function<B, A> writer) {
+        return new FunctionalHunkView<A, B>(src, null, writer);
+    }
+
+    static <A, B> Hunk<B> convertedReadWriteView(Hunk<A> src, Function<A, B> reader, Function<B, A> writer) {
+        return new FunctionalHunkView<A, B>(src, reader, writer);
     }
 
     static Hunk<Biome> view(BiomeGrid biome) {
@@ -544,6 +558,18 @@ public interface Hunk<T> {
         return this;
     }
 
+    default Hunk<T> iterateSyncIO(Consumer4IO<Integer, Integer, Integer, T> c) throws IOException {
+        for (int i = 0; i < getWidth(); i++) {
+            for (int j = 0; j < getHeight(); j++) {
+                for (int k = 0; k < getDepth(); k++) {
+                    c.accept(i, j, k, get(i, j, k));
+                }
+            }
+        }
+
+        return this;
+    }
+
     default Hunk<T> iterate(int parallelism, Consumer3<Integer, Integer, Integer> c) {
         compute3D(parallelism, (x, y, z, h) ->
         {
@@ -958,6 +984,26 @@ public interface Hunk<T> {
         return getRaw(x >= getWidth() ? getWidth() - 1 : x < 0 ? 0 : x, y >= getHeight() ? getHeight() - 1 : y < 0 ? 0 : y, z >= getDepth() ? getDepth() - 1 : z < 0 ? 0 : z);
     }
 
+    default BlockPosition getCenter()
+    {
+        return new BlockPosition(getCenterX(), getCenterY(), getCenterZ());
+    }
+
+    default int getCenterX()
+    {
+        return Math.round(getWidth() / 2);
+    }
+
+    default int getCenterY()
+    {
+        return Math.round(getHeight() / 2);
+    }
+
+    default int getCenterZ()
+    {
+        return Math.round(getDepth() / 2);
+    }
+
     default void fill(T t) {
         set(0, 0, 0, getWidth() - 1, getHeight() - 1, getDepth() - 1, t);
     }
@@ -1189,26 +1235,23 @@ public interface Hunk<T> {
 
     /**
      * Take a hunk and scale it up using interpolation
-     * @param scale the scale
-     * @param d the interpolation method
+     *
+     * @param scale        the scale
+     * @param d            the interpolation method
      * @param interpolated the interpolated value converter
      * @return the new hunk
      */
-    default Hunk<T> interpolate3D(double scale, InterpolationMethod3D d, Interpolated<T> interpolated)
-    {
-        Hunk<T> t = Hunk.newArrayHunk((int)(getWidth() * scale), (int)(getHeight() * scale), (int)(getDepth() * scale));
-        NoiseProvider3 n3 = (x,y,z) -> interpolated.toDouble(
-                t.get((int)(x/scale),
-                        (int)(y/scale),
-                        (int)(z/scale)));
+    default Hunk<T> interpolate3D(double scale, InterpolationMethod3D d, Interpolated<T> interpolated) {
+        Hunk<T> t = Hunk.newArrayHunk((int) (getWidth() * scale), (int) (getHeight() * scale), (int) (getDepth() * scale));
+        NoiseProvider3 n3 = (x, y, z) -> interpolated.toDouble(
+                t.get((int) (x / scale),
+                        (int) (y / scale),
+                        (int) (z / scale)));
 
-        for(int i = 0; i < t.getWidth(); i++)
-        {
-            for(int j = 0; j < t.getHeight(); j++)
-            {
-                for(int k = 0; k < t.getDepth(); k++)
-                {
-                    t.set(i, j, k, interpolated.fromDouble(IrisInterpolation.getNoise3D(d, i,j,k,scale, n3)));
+        for (int i = 0; i < t.getWidth(); i++) {
+            for (int j = 0; j < t.getHeight(); j++) {
+                for (int k = 0; k < t.getDepth(); k++) {
+                    t.set(i, j, k, interpolated.fromDouble(IrisInterpolation.getNoise3D(d, i, j, k, scale, n3)));
                 }
             }
         }
@@ -1219,24 +1262,22 @@ public interface Hunk<T> {
     /**
      * Take a hunk and scale it up using interpolation
      * 2D, (using only x and z) assumes the height is 1
-     * @param scale the scale
-     * @param d the interpolation method
+     *
+     * @param scale        the scale
+     * @param d            the interpolation method
      * @param interpolated the interpolated value converter
      * @return the new hunk
      */
-    default Hunk<T> interpolate2D(double scale, InterpolationMethod d, Interpolated<T> interpolated)
-    {
-        Hunk<T> t = Hunk.newArrayHunk((int)(getWidth() * scale), 1, (int)(getDepth() * scale));
-        NoiseProvider n2 = (x,z) -> interpolated.toDouble(
-                t.get((int)(x/scale),
+    default Hunk<T> interpolate2D(double scale, InterpolationMethod d, Interpolated<T> interpolated) {
+        Hunk<T> t = Hunk.newArrayHunk((int) (getWidth() * scale), 1, (int) (getDepth() * scale));
+        NoiseProvider n2 = (x, z) -> interpolated.toDouble(
+                t.get((int) (x / scale),
                         0,
-                        (int)(z/scale)));
+                        (int) (z / scale)));
 
-        for(int i = 0; i < t.getWidth(); i++)
-        {
-            for(int j = 0; j < t.getDepth(); j++)
-            {
-                t.set(i, 0, j, interpolated.fromDouble(IrisInterpolation.getNoise(d, i,j,scale, n2)));
+        for (int i = 0; i < t.getWidth(); i++) {
+            for (int j = 0; j < t.getDepth(); j++) {
+                t.set(i, 0, j, interpolated.fromDouble(IrisInterpolation.getNoise(d, i, j, scale, n2)));
             }
         }
 

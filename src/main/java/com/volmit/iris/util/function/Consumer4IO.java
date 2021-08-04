@@ -16,16 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.object.annotations;
+package com.volmit.iris.util.function;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+import java.io.IOException;
 
-import static java.lang.annotation.ElementType.*;
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
-
-@Retention(RUNTIME)
-@Target({PARAMETER, TYPE, FIELD})
-public @interface RegistryListGenerator {
-
+@FunctionalInterface
+public interface Consumer4IO<A, B, C, D> {
+    void accept(A a, B b, C c, D d) throws IOException;
 }

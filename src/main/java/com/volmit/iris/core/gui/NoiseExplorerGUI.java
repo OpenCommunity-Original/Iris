@@ -19,6 +19,7 @@
 package com.volmit.iris.core.gui;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.events.IrisEngineHotloadEvent;
 import com.volmit.iris.engine.noise.CNG;
 import com.volmit.iris.engine.object.NoiseStyle;
 import com.volmit.iris.engine.parallel.BurstExecutor;
@@ -30,6 +31,8 @@ import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.math.RollingSequence;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -39,8 +42,9 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
-public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
+public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, Listener {
 
     private static final long serialVersionUID = 2094606939770332040L;
 
@@ -61,6 +65,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
     int w = 0;
     int h = 0;
     Function2<Double, Double, Double> generator;
+    Supplier<Function2<Double, Double, Double>> loader;
     static double oxp = 0;
     static double ozp = 0;
     double ox = 0; //Offset X
@@ -77,6 +82,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
     double tz;
 
     public NoiseExplorerGUI() {
+        Iris.instance.registerListener(this);
         addMouseWheelListener(this);
         addMouseMotionListener(new MouseMotionListener() {
             @Override
@@ -98,6 +104,11 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
                 lz = cp.getY();
             }
         });
+    }
+
+    @EventHandler
+    public void on(IrisEngineHotloadEvent e) {
+        generator = loader.get();
     }
 
     public void mouseWheelMoved(MouseWheelEvent e) {
@@ -229,14 +240,15 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
         });
     }
 
-    private static void createAndShowGUI(Function2<Double, Double, Double> gen, String genName) {
+    private static void createAndShowGUI(Supplier<Function2<Double, Double, Double>> loader, String genName) {
         JFrame frame = new JFrame("Noise Explorer: " + genName);
         NoiseExplorerGUI nv = new NoiseExplorerGUI();
         frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
         JLayeredPane pane = new JLayeredPane();
         nv.setSize(new Dimension(1440, 820));
         pane.add(nv, 1, 0);
-        nv.generator = gen;
+        nv.loader = loader;
+        nv.generator = loader.get();
         frame.add(pane);
         File file = Iris.getCached("Iris Icon", "https://raw.githubusercontent.com/VolmitSoftware/Iris/master/icon.png");
 
@@ -287,11 +299,12 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener {
             @Override
             public void windowClosing(java.awt.event.WindowEvent windowEvent) {
                 nv.gx.shutdownLater();
+                Iris.instance.unregisterListener(nv);
             }
         });
     }
 
-    public static void launch(Function2<Double, Double, Double> gen, String genName) {
+    public static void launch(Supplier<Function2<Double, Double, Double>> gen, String genName) {
         EventQueue.invokeLater(() -> createAndShowGUI(gen, genName));
     }
 

@@ -19,23 +19,28 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.cache.AtomicCache;
 import com.volmit.iris.engine.framework.Engine;
+import com.volmit.iris.engine.framework.EngineFramework;
+import com.volmit.iris.engine.modifier.IrisCaveModifier;
 import com.volmit.iris.engine.object.annotations.Desc;
 import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.RegistryListEntity;
+import com.volmit.iris.engine.object.annotations.RegistryListResource;
 import com.volmit.iris.engine.object.annotations.Required;
+import com.volmit.iris.engine.object.common.CaveResult;
 import com.volmit.iris.engine.object.common.IRare;
+import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.math.RNG;
-import com.volmit.iris.util.scheduling.J;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.bukkit.Chunk;
+import org.bukkit.HeightMap;
 import org.bukkit.Location;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 
 @Accessors(chain = true)
@@ -44,10 +49,13 @@ import org.bukkit.entity.Entity;
 @Desc("Represents an entity spawn during initial chunk generation")
 @Data
 public class IrisEntitySpawn implements IRare {
-    @RegistryListEntity
+    @RegistryListResource(IrisEntity.class)
     @Required
     @Desc("The entity")
     private String entity = "";
+
+    @Desc("The energy multiplier when calculating spawn energy usage")
+    private double energyMultiplier = 1;
 
     @MinNumber(1)
     @Desc("The 1 in RARITY chance for this entity to spawn")
@@ -65,21 +73,47 @@ public class IrisEntitySpawn implements IRare {
     private final transient AtomicCache<RNG> rng = new AtomicCache<>();
     private final transient AtomicCache<IrisEntity> ent = new AtomicCache<>();
 
-    public boolean spawn(Engine gen, Chunk c, RNG rng) {
+    public int spawn(Engine gen, Chunk c, RNG rng) {
         int spawns = minSpawns == maxSpawns ? minSpawns : rng.i(Math.min(minSpawns, maxSpawns), Math.max(minSpawns, maxSpawns));
+        int s = 0;
 
         if (spawns > 0) {
-            for (int i = 0; i < spawns; i++) {
+            for (int id = 0; id < spawns; id++) {
                 int x = (c.getX() * 16) + rng.i(15);
                 int z = (c.getZ() * 16) + rng.i(15);
-                int h = c.getWorld().getHighestBlockYAt(x, z);
-                spawn100(gen, new Location(c.getWorld(), x, h, z));
-            }
+                int h = gen.getHeight(x, z, true);
+                int hf = gen.getHeight(x, z, false);
+                Location l = switch (getReferenceSpawner().getGroup()) {
+                    case NORMAL -> new Location(c.getWorld(), x, hf + 1, z);
+                    case CAVE -> {
+                        IrisComplex comp = gen.getFramework().getComplex();
+                        EngineFramework frame = gen.getFramework();
+                        IrisBiome cave = comp.getCaveBiomeStream().get(x, z);
+                        KList<Location> r = new KList<>();
+                        if (cave != null) {
+                            for (CaveResult i : ((IrisCaveModifier) frame.getCaveModifier()).genCaves(x, z)) {
+                                if (i.getCeiling() >= gen.getHeight() || i.getFloor() < 0 || i.getCeiling() - 2 <= i.getFloor()) {
+                                    continue;
+                                }
 
-            return true;
+                                r.add(new Location(c.getWorld(), x, i.getFloor(), z));
+                            }
+                        }
+
+                        yield r.getRandom(rng);
+                    }
+
+                    case UNDERWATER, BEACH -> new Location(c.getWorld(), x, rng.i(h + 1, hf), z);
+                };
+
+                if (l != null) {
+                    if (spawn100(gen, l) != null)
+                        s++;
+                }
+            }
         }
 
-        return false;
+        return s;
     }
 
     public IrisEntity getRealEntity(Engine g) {
@@ -100,16 +134,19 @@ public class IrisEntitySpawn implements IRare {
 
     private Entity spawn100(Engine g, Location at) {
         try {
-            Location l = at.clone().add(0.5, 1, 0.5);
-            Entity e = getRealEntity(g).spawn(g, l, rng.aquire(() -> new RNG(g.getTarget().getWorld().seed() + 4)));
-            if(e != null)
-            {
+            IrisEntity irisEntity = getRealEntity(g);
+
+            if (!irisEntity.getSurface().matches(at.clone().subtract(0, 1, 0).getBlock().getState())) return null; //Make sure it can spawn on the block
+
+            Entity e = irisEntity.spawn(g, at.add(0.5, 0, 0.5), rng.aquire(() -> new RNG(g.getTarget().getWorld().seed() + 4)));
+            if (e != null) {
                 Iris.debug("Spawned " + C.DARK_AQUA + "Entity<" + getEntity() + "> " + C.GREEN + e.getType() + C.LIGHT_PURPLE + " @ " + C.GRAY + e.getLocation().getX() + ", " + e.getLocation().getY() + ", " + e.getLocation().getZ());
             }
 
             return e;
         } catch (Throwable e) {
             Iris.reportError(e);
+            e.printStackTrace();
             Iris.error("      Failed to retrieve real entity @ " + at);
             return null;
         }

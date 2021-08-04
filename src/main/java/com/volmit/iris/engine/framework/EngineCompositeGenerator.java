@@ -19,11 +19,11 @@
 package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.nms.INMS;
 import com.volmit.iris.core.pregenerator.PregenListener;
 import com.volmit.iris.core.pregenerator.PregenTask;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.IrisEngineCompound;
 import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.data.chunk.MCATerrainChunk;
@@ -48,6 +48,7 @@ import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.reflect.V;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.J;
+import com.volmit.iris.util.scheduling.Looper;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import io.netty.util.internal.ConcurrentSet;
 import lombok.Getter;
@@ -58,8 +59,6 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -85,9 +84,12 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
     private final ChronoLatch hotloadcd;
     @Getter
     private double generatedPerSecond = 0;
-    private final int art;
     private ReactiveFolder hotloader = null;
     private IrisWorld cworld = null;
+    private final Looper ticker;
+    private final Looper cleaner;
+    private int hotloaderMisses = 0;
+    private long lastHotloadTime = 100;
 
     public EngineCompositeGenerator() {
         this(null, true);
@@ -95,15 +97,56 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
     public EngineCompositeGenerator(String query, boolean production) {
         super();
+        ticker = new Looper() {
+            @Override
+            protected long loop() {
+                PrecisionStopwatch p = PrecisionStopwatch.start();
+                if(!tickHotloader())
+                {
+                    hotloaderMisses++;
+                }
+
+                else
+                {
+                    hotloaderMisses = 0;
+                }
+                lastHotloadTime+= p.getMilliseconds();
+                lastHotloadTime /= 2;
+
+                return 120 + (long)(lastHotloadTime/2) + Math.min(hotloaderMisses * 125, 1375);
+            }
+        };
+        ticker.setPriority(Thread.MIN_PRIORITY);
+        ticker.setName("Iris Project Manager");
+
+        cleaner = new Looper() {
+            @Override
+            protected long loop() {
+                if(getComposite() != null)
+                {
+                    getComposite().clean();
+                }
+
+                return 10000;
+            }
+        };
+        cleaner.setPriority(Thread.MIN_PRIORITY);
+        cleaner.setName("Iris Parallax Manager");
+        cleaner.start();
+
+        if(isStudio())
+        {
+            ticker.start();
+        }
+
         hotloadcd = new ChronoLatch(3500);
         mst = M.ms();
         this.production = production;
         this.dimensionQuery = query;
         initialized = new AtomicBoolean(false);
-        art = J.ar(this::tick, 40);
         populators = new KList<BlockPopulator>().qadd(new BlockPopulator() {
             @Override
-            public void populate(@NotNull World world, @NotNull Random random, @NotNull Chunk chunk) {
+            public void populate(World world, Random random, Chunk chunk) {
                 if (compound.get() != null) {
                     for (BlockPopulator i : compound.get().getPopulators()) {
                         i.populate(world, random, chunk);
@@ -133,42 +176,30 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             getComposite().close();
             initialized.lazySet(false);
 
-            if(cworld != null)
-            {
+            if (cworld != null) {
                 initialize(cworld);
             }
         }
     }
 
-    public void tick() {
+    public boolean tickHotloader() {
         if (getComposite() == null || isClosed()) {
-            return;
+            return false;
         }
 
         if (!initialized.get()) {
-            return;
-        }
-
-        int pri = Thread.currentThread().getPriority();
-        Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-
-        if (M.ms() - mst > 1000) {
-            generatedPerSecond = (double) (generated - lgenerated) / ((double) (M.ms() - mst) / 1000D);
-            mst = M.ms();
-            lgenerated = generated;
+            return false;
         }
 
         try {
             if (hotloader != null) {
-                hotloader.check();
-                getComposite().clean();
+                return hotloader.check();
             }
         } catch (Throwable e) {
             Iris.reportError(e);
-
         }
 
-        Thread.currentThread().setPriority(pri);
+        return false;
     }
 
     private synchronized IrisDimension getDimension(IrisWorld world) {
@@ -208,11 +239,11 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             query = IrisSettings.get().getGenerator().getDefaultWorldType();
         }
 
-        dim = IrisDataManager.loadAnyDimension(query);
+        dim = IrisData.loadAnyDimension(query);
 
         if (dim == null) {
             Iris.proj.downloadSearch(new VolmitSender(Bukkit.getConsoleSender(), Iris.instance.getTag()), query, false);
-            dim = IrisDataManager.loadAnyDimension(query);
+            dim = IrisData.loadAnyDimension(query);
 
             if (dim == null) {
                 throw new RuntimeException("Cannot find dimension: " + query);
@@ -223,12 +254,12 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
         if (production) {
             IrisDimension od = dim;
-            dim = new IrisDataManager(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
+            dim = new IrisData(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
 
             if (dim == null) {
                 Iris.info("Installing Iris pack " + od.getName() + " into world " + world.name() + "...");
                 Iris.proj.installIntoWorld(new VolmitSender(Bukkit.getConsoleSender(), Iris.instance.getTag()), od.getLoadKey(), world.worldFolder());
-                dim = new IrisDataManager(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
+                dim = new IrisData(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
 
                 if (dim == null) {
                     throw new RuntimeException("Cannot find dimension: " + query);
@@ -274,11 +305,11 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             query = IrisSettings.get().getGenerator().getDefaultWorldType();
         }
 
-        dim = IrisDataManager.loadAnyDimension(query);
+        dim = IrisData.loadAnyDimension(query);
 
         if (dim == null) {
             Iris.proj.downloadSearch(new VolmitSender(Bukkit.getConsoleSender(), Iris.instance.getTag()), query, false);
-            dim = IrisDataManager.loadAnyDimension(query);
+            dim = IrisData.loadAnyDimension(query);
 
             if (dim == null) {
                 throw new RuntimeException("Cannot find dimension: " + query);
@@ -289,12 +320,12 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
         if (production) {
             IrisDimension od = dim;
-            dim = new IrisDataManager(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
+            dim = new IrisData(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
 
             if (dim == null) {
                 Iris.info("Installing Iris pack " + od.getName() + " into world " + world + "...");
                 Iris.proj.installIntoWorld(new VolmitSender(Bukkit.getConsoleSender(), Iris.instance.getTag()), od.getLoadKey(), new File(world));
-                dim = new IrisDataManager(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
+                dim = new IrisData(getDataFolder(world)).getDimensionLoader().load(od.getLoadKey());
 
                 if (dim == null) {
                     throw new RuntimeException("Cannot find dimension: " + query);
@@ -315,7 +346,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         try {
             initialized.set(true);
             IrisDimension dim = getDimension(world);
-            IrisDataManager data = production ? new IrisDataManager(getDataFolder(world)) : dim.getLoader().copy();
+            IrisData data = production ? new IrisData(getDataFolder(world)) : dim.getLoader().copy();
             compound.set(new IrisEngineCompound(world, dim, data, IrisSettings.getThreadCount(IrisSettings.get().getConcurrency().getEngineThreadCount())));
             compound.get().setStudio(!production);
             populators.clear();
@@ -457,9 +488,9 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         return new File(world + "/iris/pack");
     }
 
-    @NotNull
+
     @Override
-    public ChunkData generateChunkData(@NotNull World world, @NotNull Random ignored, int x, int z, @NotNull BiomeGrid biome) {
+    public ChunkData generateChunkData(World world, Random ignored, int x, int z, BiomeGrid biome) {
         try {
             PrecisionStopwatch ps = PrecisionStopwatch.start();
             TerrainChunk tc = TerrainChunk.create(world, biome);
@@ -565,6 +596,8 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
     public Runnable generateChunkRawData(IrisWorld world, int x, int z, TerrainChunk tc, boolean multicore) {
         initialize(world);
+        tickMetrics();
+
         Hunk<BlockData> blocks = Hunk.view((ChunkData) tc);
         Hunk<Biome> biomes = Hunk.view((BiomeGrid) tc);
         Hunk<BlockData> post = Hunk.newAtomicHunk(biomes.getWidth(), biomes.getHeight(), biomes.getDepth());
@@ -573,20 +606,28 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         return () -> blocks.insertSoftly(0, 0, 0, post, (b) -> b == null || B.isAirOrFluid(b));
     }
 
+    private void tickMetrics() {
+        if (M.ms() - mst > 1000) {
+            generatedPerSecond = (double) (generated - lgenerated) / ((double) (M.ms() - mst) / 1000D);
+            mst = M.ms();
+            lgenerated = generated;
+        }
+    }
+
     @Override
-    public boolean canSpawn(@NotNull World world, int x, int z) {
+    public boolean canSpawn(World world, int x, int z) {
         return super.canSpawn(world, x, z);
     }
 
-    @NotNull
+
     @Override
-    public List<BlockPopulator> getDefaultPopulators(@NotNull World world) {
+    public List<BlockPopulator> getDefaultPopulators(World world) {
         return populators;
     }
 
-    @Nullable
+
     @Override
-    public Location getFixedSpawnLocation(@NotNull World world, @NotNull Random random) {
+    public Location getFixedSpawnLocation(World world, Random random) {
         return super.getFixedSpawnLocation(world, random);
     }
 
@@ -668,7 +709,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
     }
 
     @Override
-    public IrisDataManager getData() {
+    public IrisData getData() {
         if (getCompound() == null) {
             return null;
         }
@@ -692,7 +733,11 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
     @Override
     public void close() {
-        J.car(art);
+        if(isStudio())
+        {
+            ticker.interrupt();
+        }
+
         if (getComposite() != null) {
             getComposite().close();
 
@@ -756,7 +801,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             dim.getAllAnyBiomes().forEach((i) -> v.put(i.getLoadKey(), i));
 
             try {
-                dim.getDimensionalComposite().forEach((m) -> IrisDataManager.loadAnyDimension(m.getDimension()).getAllAnyBiomes().forEach((i) -> v.put(i.getLoadKey(), i)));
+                dim.getDimensionalComposite().forEach((m) -> IrisData.loadAnyDimension(m.getDimension()).getAllAnyBiomes().forEach((i) -> v.put(i.getLoadKey(), i)));
             } catch (Throwable ignored) {
                 Iris.reportError(ignored);
 

@@ -19,19 +19,23 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.loader.IrisData;
 import lombok.Data;
 
 import java.awt.*;
 import java.io.File;
 
 @Data
-public class IrisRegistrant {
-    private transient IrisDataManager loader;
+public abstract class IrisRegistrant {
+    private transient IrisData loader;
 
     private transient String loadKey;
 
     private transient File loadFile;
+
+    public abstract String getFolderName();
+
+    public abstract String getTypeName();
 
     public File openInVSCode() {
         try {

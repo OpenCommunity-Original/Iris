@@ -16,10 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.data.loader;
+package com.volmit.iris.core.project.loader;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.engine.object.IrisObject;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -40,10 +39,14 @@ public class ObjectResourceLoader extends ResourceLoader<IrisObject> {
     private final ChronoLatch cl;
     private final AtomicInteger unload;
 
-    public ObjectResourceLoader(File root, IrisDataManager idm, String folderName, String resourceTypeName) {
+    public ObjectResourceLoader(File root, IrisData idm, String folderName, String resourceTypeName) {
         super(root, idm, folderName, resourceTypeName, IrisObject.class);
         cl = new ChronoLatch(30000);
         unload = new AtomicInteger(0);
+    }
+
+    public boolean supportsSchemas() {
+        return false;
     }
 
     public int getSize() {
@@ -139,7 +142,7 @@ public class ObjectResourceLoader extends ResourceLoader<IrisObject> {
             return possibleKeys;
         }
 
-        Iris.info("Building " + resourceTypeName + " Possibility Lists");
+        Iris.debug("Building " + resourceTypeName + " Possibility Lists");
         KSet<String> m = new KSet<>();
 
         for (File i : getFolders()) {

@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.data.loader;
+package com.volmit.iris.core.project.loader;
 
 import com.google.common.util.concurrent.AtomicDouble;
 import com.google.gson.Gson;
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
+import com.volmit.iris.core.project.SchemaBuilder;
 import com.volmit.iris.engine.object.IrisRegistrant;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -29,6 +29,8 @@ import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.io.IO;
+import com.volmit.iris.util.json.JSONArray;
+import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.IrisLock;
 import com.volmit.iris.util.scheduling.J;
@@ -39,6 +41,7 @@ import java.io.File;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 @Data
 public class ResourceLoader<T extends IrisRegistrant> {
@@ -53,11 +56,11 @@ public class ResourceLoader<T extends IrisRegistrant> {
     protected String cname;
     protected IrisLock lock;
     protected String[] possibleKeys = null;
-    protected IrisDataManager manager;
+    protected IrisData manager;
     protected AtomicInteger loads;
     protected ChronoLatch sec;
 
-    public ResourceLoader(File root, IrisDataManager manager, String folderName, String resourceTypeName, Class<? extends T> objectClass) {
+    public ResourceLoader(File root, IrisData manager, String folderName, String resourceTypeName, Class<? extends T> objectClass) {
         lock = new IrisLock("Res");
         this.manager = manager;
         sec = new ChronoLatch(5000);
@@ -70,6 +73,45 @@ public class ResourceLoader<T extends IrisRegistrant> {
         this.folderName = folderName;
         loadCache = new KMap<>();
         Iris.debug("Loader<" + C.GREEN + resourceTypeName + C.LIGHT_PURPLE + "> created in " + C.RED + "IDM/" + manager.getId() + C.LIGHT_PURPLE + " on " + C.WHITE + manager.getDataFolder().getPath());
+    }
+
+    public JSONObject buildSchema() {
+        Iris.debug("Building Schema " + objectClass.getSimpleName() + " " + root.getPath());
+        JSONObject o = new JSONObject();
+        KList<String> fm = new KList<>();
+
+        for (int g = 1; g < 8; g++) {
+            fm.add("/" + folderName + Form.repeat("/*", g) + ".json");
+        }
+
+        o.put("fileMatch", new JSONArray(fm.toArray()));
+        o.put("schema", new SchemaBuilder(objectClass, manager).compute());
+
+        return o;
+    }
+
+    public File findFile(String name) {
+        lock.lock();
+        for (File i : getFolders(name)) {
+            for (File j : i.listFiles()) {
+                if (j.isFile() && j.getName().endsWith(".json") && j.getName().split("\\Q.\\E")[0].equals(name)) {
+                    lock.unlock();
+                    return j;
+                }
+            }
+
+            File file = new File(i, name + ".json");
+
+            if (file.exists()) {
+                lock.unlock();
+                return file;
+            }
+        }
+
+        Iris.warn("Couldn't find " + resourceTypeName + ": " + name);
+
+        lock.unlock();
+        return null;
     }
 
     public void logLoad(File path, T t) {
@@ -116,7 +158,6 @@ public class ResourceLoader<T extends IrisRegistrant> {
             return possibleKeys;
         }
 
-        Iris.info("Building " + resourceTypeName + " Registry Lists");
         KSet<String> m = new KSet<>();
 
         for (File i : getFolders()) {
@@ -152,6 +193,10 @@ public class ResourceLoader<T extends IrisRegistrant> {
             failLoad(j, e);
             return null;
         }
+    }
+
+    public Stream<T> streamAll(Stream<String> s) {
+        return s.map(this::load);
     }
 
     public KList<T> loadAll(KList<String> s) {
@@ -305,5 +350,21 @@ public class ResourceLoader<T extends IrisRegistrant> {
         }
 
         return f;
+    }
+
+    public boolean supportsSchemas() {
+        return true;
+    }
+
+    public void clean() {
+
+    }
+
+    public int getSize() {
+        return loadCache.size();
+    }
+
+    public int getTotalStorage() {
+        return getSize();
     }
 }

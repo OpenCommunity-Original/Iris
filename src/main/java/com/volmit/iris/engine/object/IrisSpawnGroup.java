@@ -16,16 +16,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.object.annotations;
+package com.volmit.iris.engine.object;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.Target;
+import com.volmit.iris.engine.object.annotations.Desc;
 
-import static java.lang.annotation.ElementType.*;
-import static java.lang.annotation.RetentionPolicy.RUNTIME;
+@Desc("Terrain modes are used to decide the generator type currently used")
+public enum IrisSpawnGroup {
+    @Desc("Spawns on the terrain surface")
+    NORMAL,
 
-@Retention(RUNTIME)
-@Target({PARAMETER, TYPE, FIELD})
-public @interface RegistryListMythical {
+    @Desc("Spawns in cave-air and low light level areas")
+    CAVE,
 
+    @Desc("Spawns underwater")
+    UNDERWATER,
+
+    @Desc("Spawns in beaches")
+    BEACH
 }

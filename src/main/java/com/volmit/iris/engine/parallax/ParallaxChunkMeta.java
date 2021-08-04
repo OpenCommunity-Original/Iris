@@ -22,7 +22,6 @@ import com.google.gson.Gson;
 import com.volmit.iris.engine.hunk.io.HunkIOAdapter;
 import com.volmit.iris.engine.hunk.io.PaletteHunkIOAdapter;
 import com.volmit.iris.engine.object.IrisFeaturePositional;
-import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.oldnbt.CompoundTag;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -30,9 +29,10 @@ import lombok.Data;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Function;
 
 @AllArgsConstructor
@@ -70,7 +70,7 @@ public class ParallaxChunkMeta {
             pcm.setMaxObject(din.readInt());
             pcm.setMinObject(din.readInt());
             pcm.setCount(din.readInt());
-            pcm.setFeatures(newList());
+            pcm.setFeatures(newSet());
             int c = din.readInt();
 
             for (int i = 0; i < c; i++) {
@@ -90,14 +90,13 @@ public class ParallaxChunkMeta {
     private int maxObject = -1;
     private int minObject = -1;
     private int count;
-    private List<IrisFeaturePositional> features;
+    private Set<IrisFeaturePositional> features;
 
-    private static List<IrisFeaturePositional> newList()
-    {
-        return new CopyOnWriteArrayList<>();
+    private static Set<IrisFeaturePositional> newSet() {
+        return new CopyOnWriteArraySet<>();
     }
 
     public ParallaxChunkMeta() {
-        this(false, false, false, false, false, false, -1, -1, 0, newList());
+        this(false, false, false, false, false, false, -1, -1, 0, newSet());
     }
 }

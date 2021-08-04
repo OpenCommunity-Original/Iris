@@ -18,22 +18,14 @@
 
 package com.volmit.iris.engine.object;
 
-import com.volmit.iris.Iris;
-import com.volmit.iris.engine.cache.AtomicCache;
-import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.annotations.*;
-import com.volmit.iris.engine.object.common.IRare;
-import com.volmit.iris.engine.stream.ProceduralStream;
-import com.volmit.iris.engine.stream.convert.SelectionStream;
+import com.volmit.iris.engine.object.annotations.ArrayType;
+import com.volmit.iris.engine.object.annotations.Desc;
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.math.RNG;
-import com.volmit.iris.util.reflect.V;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
-import org.bukkit.Chunk;
 import org.bukkit.World;
 
 @EqualsAndHashCode(callSuper = true)
@@ -47,6 +39,9 @@ public class IrisSpawner extends IrisRegistrant {
     @Desc("The entity spawns to add")
     private KList<IrisEntitySpawn> spawns = new KList<>();
 
+    @Desc("The energy multiplier when calculating spawn energy usage")
+    private double energyMultiplier = 1;
+
     @Desc("The block of 24 hour time to contain this spawn in.")
     private IrisTimeBlock timeBlock = new IrisTimeBlock();
 
@@ -56,8 +51,38 @@ public class IrisSpawner extends IrisRegistrant {
     @Desc("The maximum rate this spawner can fire")
     private IrisRate maximumRate = new IrisRate();
 
-    public boolean isValid(World world)
-    {
+    @Desc("Where should these spawns be placed")
+    private IrisSpawnGroup group = IrisSpawnGroup.NORMAL;
+
+    public boolean isValid(IrisBiome biome) {
+        return switch (group) {
+            case NORMAL -> switch (biome.getInferredType()) {
+                case SHORE, SEA, CAVE, RIVER, LAKE, DEFER -> false;
+                case LAND -> true;
+            };
+            case CAVE -> true;
+            case UNDERWATER -> switch (biome.getInferredType()) {
+                case SHORE, LAND, CAVE, RIVER, LAKE, DEFER -> false;
+                case SEA -> true;
+            };
+            case BEACH -> switch (biome.getInferredType()) {
+                case SHORE -> true;
+                case LAND, CAVE, RIVER, LAKE, SEA, DEFER -> false;
+            };
+        };
+    }
+
+    public boolean isValid(World world) {
         return timeBlock.isWithin(world) && weather.is(world);
+    }
+
+    @Override
+    public String getFolderName() {
+        return "spawners";
+    }
+
+    @Override
+    public String getTypeName() {
+        return "Spawner";
     }
 }

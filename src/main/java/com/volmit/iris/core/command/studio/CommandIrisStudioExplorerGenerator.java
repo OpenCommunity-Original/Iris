@@ -19,15 +19,18 @@
 package com.volmit.iris.core.command.studio;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisDataManager;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.gui.NoiseExplorerGUI;
+import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.object.IrisGenerator;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.plugin.MortarCommand;
 import com.volmit.iris.util.plugin.VolmitSender;
+
+import java.util.function.Supplier;
 
 public class CommandIrisStudioExplorerGenerator extends MortarCommand {
     public CommandIrisStudioExplorerGenerator() {
@@ -40,7 +43,7 @@ public class CommandIrisStudioExplorerGenerator extends MortarCommand {
     @Override
     public void addTabOptions(VolmitSender sender, String[] args, KList<String> list) {
         if ((args.length == 0 || args.length == 1) && sender.isPlayer() && IrisWorlds.isIrisWorld(sender.player().getWorld())) {
-            IrisDataManager data = IrisWorlds.access(sender.player().getWorld()).getData();
+            IrisData data = IrisWorlds.access(sender.player().getWorld()).getData();
             if (data == null) {
                 sender.sendMessage("Issue when loading tab completions. No data found (?)");
             } else if (args.length == 0) {
@@ -68,26 +71,27 @@ public class CommandIrisStudioExplorerGenerator extends MortarCommand {
             return true;
         }
 
-        IrisGenerator generator;
-        long seed = 12345;
 
-        if (Iris.proj.isProjectOpen()) {
-            generator = Iris.proj.getActiveProject().getActiveProvider().getData().getGeneratorLoader().load(args[0]);
-            seed = Iris.proj.getActiveProject().getActiveProvider().getTarget().getWorld().seed();
-        } else {
-            generator = IrisDataManager.loadAnyGenerator(args[0]);
-        }
+        Supplier<Function2<Double, Double, Double>> l = () -> {
+            long seed = 12345;
+            IrisGenerator generator;
+            if (Iris.proj.isProjectOpen()) {
+                generator = Iris.proj.getActiveProject().getActiveProvider().getData().getGeneratorLoader().load(args[0]);
+                seed = Iris.proj.getActiveProject().getActiveProvider().getTarget().getWorld().seed();
+            } else {
+                generator = IrisData.loadAnyGenerator(args[0]);
+            }
 
-        if (generator != null) {
+            if (generator == null) {
+                return (x, z) -> 0D;
+            }
+
             long finalSeed = seed;
-            NoiseExplorerGUI.launch((x, z) ->
-                    generator.getHeight(x, z, new RNG(finalSeed).nextParallelRNG(3245).lmax()), "Gen: " + generator.getLoadKey());
+            return (x, z) -> generator.getHeight(x, z, new RNG(finalSeed).nextParallelRNG(3245).lmax());
+        };
 
-            sender.sendMessage("Opening Noise Explorer for gen " + generator.getLoadKey() + " (" + generator.getLoader().getDataFolder().getName() + ")");
-            return true;
-        } else {
-            sender.sendMessage("Invalid Generator");
-        }
+
+        NoiseExplorerGUI.launch(l, "Custom Generator");
 
         return true;
     }
