@@ -24,23 +24,17 @@ import com.volmit.iris.core.ProjectManager;
 import com.volmit.iris.core.WandManager;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
-import com.volmit.iris.engine.object.IrisAxisRotationClamp;
-import com.volmit.iris.engine.object.IrisObject;
-import com.volmit.iris.engine.object.IrisObjectPlacement;
-import com.volmit.iris.engine.object.IrisObjectPlacementScaleInterpolator;
-import com.volmit.iris.engine.object.IrisObjectRotation;
-import com.volmit.iris.engine.object.IrisObjectScale;
 import com.volmit.iris.engine.object.common.IObjectPlacer;
+import com.volmit.iris.engine.object.objects.IrisObject;
+import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
+import com.volmit.iris.engine.object.objects.IrisObjectPlacementScaleInterpolator;
+import com.volmit.iris.engine.object.objects.IrisObjectRotation;
 import com.volmit.iris.engine.object.tile.TileData;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.plugin.MortarCommand;
 import com.volmit.iris.util.plugin.VolmitSender;
-import org.bukkit.HeightMap;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.Sound;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.TileState;
@@ -49,7 +43,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -191,7 +184,7 @@ public class CommandIrisObjectPaste extends MortarCommand {
         //WandManager.pasteSchematic(obj, block);
 
         Map<Block, BlockData> futureChanges = new HashMap<>();
-        obj.place(block.getBlockX(), block.getBlockY() + (int)obj.getCenter().getY(), block.getBlockZ(), createPlacer(sender.player(), block.getWorld(), futureChanges), placement, new RNG(), null);
+        obj.place(block.getBlockX(), block.getBlockY() + (int) obj.getCenter().getY(), block.getBlockZ(), createPlacer(sender.player(), block.getWorld(), futureChanges), placement, new RNG(), null);
         CommandIrisObjectUndo.addChanges(sender.player(), futureChanges);
 
         if (intoWand) {
@@ -234,7 +227,7 @@ public class CommandIrisObjectPaste extends MortarCommand {
 
             @Override
             public int getHighest(int x, int z, IrisData data, boolean ignoreFluid) {
-                return world.getHighestBlockYAt(x, z, ignoreFluid ? HeightMap.OCEAN_FLOOR: HeightMap.MOTION_BLOCKING);
+                return world.getHighestBlockYAt(x, z, ignoreFluid ? HeightMap.OCEAN_FLOOR : HeightMap.MOTION_BLOCKING);
             }
 
             @Override

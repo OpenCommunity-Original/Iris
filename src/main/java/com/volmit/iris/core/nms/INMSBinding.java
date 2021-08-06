@@ -18,13 +18,26 @@
 
 package com.volmit.iris.core.nms;
 
+import com.volmit.iris.util.nbt.tag.CompoundTag;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.block.Biome;
+import org.bukkit.block.TileState;
+import org.bukkit.entity.Entity;
 import org.bukkit.generator.ChunkGenerator;
 
 public interface INMSBinding {
+    boolean hasTile(Location l);
+
+    CompoundTag serializeTile(Location location);
+
+    void deserializeTile(CompoundTag s, Location newPosition);
+
+    CompoundTag serializeEntity(Entity location);
+
+    Entity deserializeEntity(CompoundTag s, Location newPosition);
+
     boolean supportsCustomHeight();
 
     Object getBiomeBaseFromId(int id);

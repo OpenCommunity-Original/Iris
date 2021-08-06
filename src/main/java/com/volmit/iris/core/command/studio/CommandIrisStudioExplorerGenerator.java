@@ -23,7 +23,7 @@ import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.gui.NoiseExplorerGUI;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
-import com.volmit.iris.engine.object.IrisGenerator;
+import com.volmit.iris.engine.object.noise.IrisGenerator;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.math.RNG;

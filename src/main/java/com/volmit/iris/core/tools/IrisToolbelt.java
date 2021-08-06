@@ -27,7 +27,7 @@ import com.volmit.iris.core.pregenerator.methods.HeadlessPregenMethod;
 import com.volmit.iris.core.pregenerator.methods.HybridPregenMethod;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.framework.IrisAccess;
-import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.util.plugin.VolmitSender;
 import org.bukkit.Bukkit;
 import org.bukkit.World;

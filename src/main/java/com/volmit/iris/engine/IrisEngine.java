@@ -22,20 +22,21 @@ import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.events.IrisEngineHotloadEvent;
-import com.volmit.iris.engine.cache.AtomicCache;
+import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.*;
-import com.volmit.iris.engine.hunk.Hunk;
-import com.volmit.iris.engine.object.IrisBiome;
-import com.volmit.iris.engine.object.IrisBiomePaletteLayer;
-import com.volmit.iris.engine.object.IrisDecorator;
-import com.volmit.iris.engine.object.IrisObjectPlacement;
+import com.volmit.iris.engine.object.biome.IrisBiome;
+import com.volmit.iris.engine.object.biome.IrisBiomePaletteLayer;
+import com.volmit.iris.engine.object.decoration.IrisDecorator;
 import com.volmit.iris.engine.object.engine.IrisEngineData;
+import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.scheduling.J;
@@ -58,6 +59,9 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
     @Getter
     private final EngineTarget target;
+
+    @Getter
+    private final IrisContext context;
 
     @Getter
     private final EngineFramework framework;
@@ -115,6 +119,8 @@ public class IrisEngine extends BlockPopulator implements Engine {
         art = J.ar(effects::tickRandomPlayer, 0);
         J.a(this::computeBiomeMaxes);
         Iris.callEvent(new IrisEngineHotloadEvent(this));
+        context = new IrisContext(this);
+        context.touch();
     }
 
     @Override
@@ -202,6 +208,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
     @ChunkCoordinates
     @Override
     public void generate(int x, int z, Hunk<BlockData> vblocks, Hunk<Biome> vbiomes, boolean multicore) {
+        context.touch();
         getEngineData().getStatistics().generatedChunk();
         try {
             PrecisionStopwatch p = PrecisionStopwatch.start();

@@ -22,21 +22,29 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.gui.components.RenderType;
 import com.volmit.iris.core.gui.components.Renderer;
 import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.cache.Cache;
-import com.volmit.iris.engine.data.B;
-import com.volmit.iris.engine.data.DataProvider;
-import com.volmit.iris.engine.hunk.Hunk;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.object.basic.IrisColor;
+import com.volmit.iris.engine.object.biome.IrisBiome;
 import com.volmit.iris.engine.object.common.IrisWorld;
+import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.engine.object.engine.IrisEngineData;
+import com.volmit.iris.engine.object.loot.IrisLootMode;
+import com.volmit.iris.engine.object.loot.IrisLootReference;
+import com.volmit.iris.engine.object.loot.IrisLootTable;
+import com.volmit.iris.engine.object.meta.InventorySlotType;
+import com.volmit.iris.engine.object.regional.IrisRegion;
 import com.volmit.iris.engine.parallax.ParallaxAccess;
-import com.volmit.iris.engine.parallel.MultiBurst;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.context.IrisContext;
+import com.volmit.iris.util.data.B;
+import com.volmit.iris.util.data.DataProvider;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
+import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.parallel.MultiBurst;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -54,6 +62,8 @@ import java.util.UUID;
 
 public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootProvider, BlockUpdater, Renderer, Hotloadable {
     void close();
+
+    IrisContext getContext();
 
     double getMaxBiomeObjectDensity();
 
@@ -309,7 +319,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     @Override
     default void injectTables(KList<IrisLootTable> list, IrisLootReference r) {
-        if (r.getMode().equals(LootMode.CLEAR) || r.getMode().equals(LootMode.REPLACE)) {
+        if (r.getMode().equals(IrisLootMode.CLEAR) || r.getMode().equals(IrisLootMode.REPLACE)) {
             list.clear();
         }
 

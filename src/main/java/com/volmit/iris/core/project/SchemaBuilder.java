@@ -21,13 +21,16 @@ package com.volmit.iris.core.project;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.project.loader.ResourceLoader;
-import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.json.JSONArray;
 import com.volmit.iris.util.json.JSONObject;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.material.MaterialData;
 import org.bukkit.potion.PotionEffectType;
 
 import java.awt.*;
@@ -35,6 +38,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class SchemaBuilder {
     private static final String SYMBOL_LIMIT__N = "*";
@@ -221,6 +225,22 @@ public class SchemaBuilder {
                     prop.put("$ref", "#/definitions/" + key);
                     description.add(SYMBOL_TYPE__N + "  Must be a valid Item Type (use ctrl+space for auto complete!)");
 
+                } else if(k.isAnnotationPresent(RegistryListSpecialEntity.class)) {
+                    String key = "enum-reg-specialentity";
+
+                    if(!definitions.containsKey(key))
+                    {
+                        JSONObject j = new JSONObject();
+                        KList<String> list = new KList<>();
+                        list.addAll(Iris.linkMythicMobs.getMythicMobTypes().stream().map(s -> "MythicMobs:" + s).collect(Collectors.toList()));
+                        //TODO add Citizens stuff here too
+                        j.put("enum", list.toJSONStringArray());
+                        definitions.put(key, j);
+                    }
+
+                    fancyType = "Mythic Mob Type";
+                    prop.put("$ref", "#/definitions/" + key);
+                    description.add(SYMBOL_TYPE__N + "  Must be a valid Mythic Mob Type (use ctrl+space for auto complete!) Define mythic mobs with the mythic mobs plugin configuration files.");
                 } else if (k.isAnnotationPresent(RegistryListFont.class)) {
                     String key = "enum-font";
 
@@ -512,15 +532,15 @@ public class SchemaBuilder {
     }
 
     private String getType(Class<?> c) {
-        if (c.equals(int.class) || c.equals(Integer.class) || c.equals(long.class)) {
+        if (c.equals(int.class) || c.equals(Integer.class) || c.equals(long.class) || c.equals(Long.class)) {
             return "integer";
         }
 
-        if (c.equals(float.class) || c.equals(double.class)) {
+        if (c.equals(float.class) || c.equals(double.class) || c.equals(Float.class) || c.equals(Double.class)) {
             return "number";
         }
 
-        if (c.equals(boolean.class)) {
+        if (c.equals(boolean.class)||c.equals(Boolean.class)) {
             return "boolean";
         }
 
@@ -536,7 +556,7 @@ public class SchemaBuilder {
             return "object";
         }
 
-        if (!c.isAnnotationPresent(Desc.class)) {
+        if (!c.isAnnotationPresent(Desc.class) && c.getCanonicalName().startsWith("com.volmit.iris.")) {
             warnings.addIfMissing("Unsupported Type: " + c.getCanonicalName() + " Did you forget @Desc?");
         }
 
@@ -544,8 +564,14 @@ public class SchemaBuilder {
     }
 
     private String getFieldDescription(Field r) {
+
         if (r.isAnnotationPresent(Desc.class)) {
             return r.getDeclaredAnnotation(Desc.class).value();
+        }
+
+        // suppress warnings on bukkit classes
+        if (r.getDeclaringClass().getName().startsWith("org.bukkit.")){
+            return "Bukkit package classes and enums have no descriptions";
         }
 
         warnings.addIfMissing("Missing @Desc on field " + r.getName() + " (" + r.getType() + ") in " + r.getDeclaringClass().getCanonicalName());

@@ -24,11 +24,18 @@ import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.EngineParallaxManager;
 import com.volmit.iris.engine.framework.IrisAccess;
-import com.volmit.iris.engine.interpolation.InterpolationMethod;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.object.basic.IrisPosition;
 import com.volmit.iris.engine.object.common.IObjectPlacer;
+import com.volmit.iris.engine.object.entity.IrisEntity;
+import com.volmit.iris.engine.object.feature.IrisFeature;
+import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
+import com.volmit.iris.engine.object.jigsaw.IrisJigsawPiece;
+import com.volmit.iris.engine.object.jigsaw.IrisJigsawPieceConnector;
+import com.volmit.iris.engine.object.jigsaw.IrisJigsawStructure;
+import com.volmit.iris.engine.object.objects.*;
 import com.volmit.iris.engine.parallax.ParallaxChunkMeta;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.interpolation.InterpolationMethod;
 import com.volmit.iris.util.math.RNG;
 import lombok.Data;
 import org.bukkit.Axis;
@@ -67,6 +74,10 @@ public class PlannedStructure {
         }
 
         generateTerminators();
+
+        for (PlannedPiece i : pieces) {
+            Iris.debug("Place: " + i.getObject().getLoadKey() + " at @ relative " + i.getPosition().toString());
+        }
     }
 
     public KList<Runnable> place(IObjectPlacer placer, EngineParallaxManager e) {

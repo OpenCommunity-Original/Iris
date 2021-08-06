@@ -20,10 +20,10 @@ package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.object.IrisDimension;
 import com.volmit.iris.engine.object.common.IrisWorld;
+import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.engine.parallax.ParallaxWorld;
-import com.volmit.iris.engine.parallel.MultiBurst;
+import com.volmit.iris.util.parallel.MultiBurst;
 import lombok.Data;
 
 import java.io.File;

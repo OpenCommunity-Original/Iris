@@ -22,7 +22,7 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.IrisAccess;
-import com.volmit.iris.engine.object.IrisFeaturePositional;
+import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
 import com.volmit.iris.util.board.BoardManager;
 import com.volmit.iris.util.board.BoardProvider;
 import com.volmit.iris.util.board.BoardSettings;
@@ -47,7 +47,7 @@ import java.util.List;
 
 public class IrisBoardManager implements BoardProvider, Listener {
 
-    private BossBar energyBar;
+    private final BossBar energyBar;
     private final BoardManager manager;
     private String mem = "...";
     public final RollingSequence hits = new RollingSequence(20);
@@ -119,10 +119,9 @@ public class IrisBoardManager implements BoardProvider, Listener {
         }
 
         Engine engine = g.getCompound().getEngineForHeight(y);
-        if(ecl.flip())
-        {
+        if (ecl.flip()) {
             energyBar.setProgress(Math.min(1000D, engine.getWorldManager().getEnergy()) / 1000D);
-            energyBar.setTitle("Spawner Energy: " + Form.f((int)Math.min(1000D, engine.getWorldManager().getEnergy())));
+            energyBar.setTitle("Spawner Energy: " + Form.f((int) Math.min(1000D, engine.getWorldManager().getEnergy())));
         }
 
         int parallaxChunks = 0;

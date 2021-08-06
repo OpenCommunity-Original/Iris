@@ -20,14 +20,20 @@ package com.volmit.iris.core;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.edit.DustRevealer;
-import com.volmit.iris.engine.object.IrisObject;
+import com.volmit.iris.core.wand.WandSelection;
+import com.volmit.iris.engine.object.objects.IrisObject;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.data.Cuboid;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.math.M;
+import com.volmit.iris.util.matter.IrisMatter;
+import com.volmit.iris.util.matter.Matter;
+import com.volmit.iris.util.matter.WorldMatter;
 import com.volmit.iris.util.plugin.VolmitSender;
+import com.volmit.iris.util.scheduling.J;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -53,27 +59,36 @@ public class WandManager implements Listener {
     public WandManager() {
         wand = createWand();
         dust = createDust();
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(Iris.instance, () ->
-        {
+
+        J.ar(() -> {
             for (Player i : Bukkit.getOnlinePlayers()) {
                 tick(i);
             }
-        }, 0, 5);
+        }, 0);
     }
 
     public void tick(Player p) {
-        try {
-            if (isWand(p.getInventory().getItemInMainHand())) {
-                Location[] d = getCuboid(p.getInventory().getItemInMainHand());
-                draw(d, p);
+        try
+        {
+            try {
+                if (isWand(p.getInventory().getItemInMainHand())) {
+                    Location[] d = getCuboid(p.getInventory().getItemInMainHand());
+                    new WandSelection(new Cuboid(d[0], d[1]), p).draw();
+                }
+            } catch (Throwable e) {
+                Iris.reportError(e);
             }
-        } catch (Throwable e) {
-            Iris.reportError(e);
+        }
+
+        catch(Throwable e)
+        {
+            e.printStackTrace();
         }
     }
 
     /**
      * Draw the outline of a selected region
+     *
      * @param d The cuboid
      * @param p The player to show it to
      */
@@ -83,6 +98,7 @@ public class WandManager implements Listener {
 
     /**
      * Draw the outline of a selected region
+     *
      * @param d A pair of locations
      * @param p The player to show them to
      */
@@ -191,6 +207,7 @@ public class WandManager implements Listener {
 
     /**
      * Creates an Iris Object from the 2 coordinates selected with a wand
+     *
      * @param wand The wand itemstack
      * @return The new object
      */
@@ -222,7 +239,31 @@ public class WandManager implements Listener {
     }
 
     /**
+     * Creates an Iris Object from the 2 coordinates selected with a wand
+     *
+     * @param wand The wand itemstack
+     * @return The new object
+     */
+    public static Matter createMatterSchem(Player p, ItemStack wand) {
+        if (!isWand(wand)) {
+            return null;
+        }
+
+        try {
+            Location[] f = getCuboid(wand);
+
+            return WorldMatter.createMatter(p.getName(), f[0], f[1]);
+        } catch (Throwable e) {
+            e.printStackTrace();
+            Iris.reportError(e);
+        }
+
+        return null;
+    }
+
+    /**
      * Converts a user friendly location string to an actual Location
+     *
      * @param s The string
      * @return The location
      */
@@ -239,6 +280,7 @@ public class WandManager implements Listener {
 
     /**
      * Get a user friendly string of a location
+     *
      * @param loc The location
      * @return The string
      */
@@ -252,6 +294,7 @@ public class WandManager implements Listener {
 
     /**
      * Create a new blank Iris wand
+     *
      * @return The wand itemstack
      */
     public static ItemStack createWand() {
@@ -260,6 +303,7 @@ public class WandManager implements Listener {
 
     /**
      * Create a new dust itemstack
+     *
      * @return The stack
      */
     public static ItemStack createDust() {
@@ -277,6 +321,7 @@ public class WandManager implements Listener {
 
     /**
      * Is the player holding Dust?
+     *
      * @param p The player
      * @return True if they are
      */
@@ -287,6 +332,7 @@ public class WandManager implements Listener {
 
     /**
      * Is the itemstack passed Iris dust?
+     *
      * @param is The itemstack
      * @return True if it is
      */
@@ -296,8 +342,9 @@ public class WandManager implements Listener {
 
     /**
      * Update the location on an Iris wand
+     *
      * @param left True for first location, false for second
-     * @param a The location
+     * @param a    The location
      * @param item The wand
      * @return The updated wand
      */
@@ -318,6 +365,7 @@ public class WandManager implements Listener {
 
     /**
      * Finds an existing wand in a users inventory
+     *
      * @param inventory The inventory to search
      * @return The slot number the wand is in. Or -1 if none are found
      */
@@ -341,6 +389,7 @@ public class WandManager implements Listener {
 
     /**
      * Creates an Iris wand. The locations should be the currently selected locations, or null
+     *
      * @param a Location A
      * @param b Location B
      * @return A new wand
@@ -360,6 +409,7 @@ public class WandManager implements Listener {
 
     /**
      * Get a pair of locations that are selected in an Iris wand
+     *
      * @param is The wand item
      * @return An array with the 2 locations
      */
@@ -370,6 +420,7 @@ public class WandManager implements Listener {
 
     /**
      * Is a player holding an Iris wand
+     *
      * @param p The player
      * @return True if they are
      */
@@ -380,6 +431,7 @@ public class WandManager implements Listener {
 
     /**
      * Is the itemstack passed an Iris wand
+     *
      * @param is The itemstack
      * @return True if it is
      */

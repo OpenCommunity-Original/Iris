@@ -19,20 +19,20 @@
 package com.volmit.iris.engine.decorator;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.engine.cache.Cache;
+import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.hunk.Hunk;
-import com.volmit.iris.engine.object.DecorationPart;
-import com.volmit.iris.engine.object.InferredType;
-import com.volmit.iris.engine.object.IrisBiome;
-import com.volmit.iris.engine.object.IrisDecorator;
+import com.volmit.iris.engine.object.biome.InferredType;
+import com.volmit.iris.engine.object.biome.IrisBiome;
+import com.volmit.iris.engine.object.decoration.IrisDecorationPart;
+import com.volmit.iris.engine.object.decoration.IrisDecorator;
 import com.volmit.iris.util.documentation.BlockCoordinates;
+import com.volmit.iris.util.hunk.Hunk;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.BlockData;
 
 public class IrisSurfaceDecorator extends IrisEngineDecorator {
     public IrisSurfaceDecorator(Engine engine) {
-        super(engine, "Surface", DecorationPart.NONE);
+        super(engine, "Surface", IrisDecorationPart.NONE);
     }
 
     @BlockCoordinates

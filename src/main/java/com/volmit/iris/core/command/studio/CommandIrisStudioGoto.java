@@ -22,9 +22,9 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.IrisAccess;
-import com.volmit.iris.engine.object.IrisBiome;
-import com.volmit.iris.engine.object.IrisJigsawStructure;
-import com.volmit.iris.engine.object.IrisRegion;
+import com.volmit.iris.engine.object.biome.IrisBiome;
+import com.volmit.iris.engine.object.jigsaw.IrisJigsawStructure;
+import com.volmit.iris.engine.object.regional.IrisRegion;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
@@ -107,7 +107,7 @@ public class CommandIrisStudioGoto extends MortarCommand {
                             J.s(() -> sender.player().teleport(l));
                         }
                     });
-                }else if (s != null) {
+                } else if (s != null) {
                     J.a(() -> {
                         Location l = g.lookForRegion(r, 60000, (v) -> sender.sendMessage(C.BOLD + "" + C.WHITE + r.getName() + C.RESET + C.GRAY + ": Checked " + Form.f(v) + " Places"));
 

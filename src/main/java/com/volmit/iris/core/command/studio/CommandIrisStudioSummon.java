@@ -23,7 +23,7 @@ import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.tools.IrisWorlds;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.IrisAccess;
-import com.volmit.iris.engine.object.IrisEntity;
+import com.volmit.iris.engine.object.entity.IrisEntity;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.plugin.MortarCommand;
 import com.volmit.iris.util.plugin.VolmitSender;

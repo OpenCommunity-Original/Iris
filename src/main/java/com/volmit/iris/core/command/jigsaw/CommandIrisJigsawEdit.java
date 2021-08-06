@@ -22,7 +22,7 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.edit.JigsawEditor;
 import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.object.IrisJigsawPiece;
+import com.volmit.iris.engine.object.jigsaw.IrisJigsawPiece;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.plugin.MortarCommand;
 import com.volmit.iris.util.plugin.VolmitSender;

@@ -84,6 +84,7 @@ public class CommandIris extends MortarCommand {
     public boolean handle(VolmitSender sender, String[] args) {
         sender.sendMessage("Iris v" + Iris.instance.getDescription().getVersion() + " by Volmit Software");
         printHelp(sender);
+
         return true;
     }
 

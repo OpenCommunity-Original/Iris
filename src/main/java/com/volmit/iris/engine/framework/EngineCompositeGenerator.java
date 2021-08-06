@@ -25,25 +25,25 @@ import com.volmit.iris.core.pregenerator.PregenListener;
 import com.volmit.iris.core.pregenerator.PregenTask;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.IrisEngineCompound;
-import com.volmit.iris.engine.data.B;
 import com.volmit.iris.engine.data.chunk.MCATerrainChunk;
 import com.volmit.iris.engine.data.chunk.TerrainChunk;
-import com.volmit.iris.engine.data.mca.NBTWorld;
-import com.volmit.iris.engine.data.nbt.tag.CompoundTag;
-import com.volmit.iris.engine.headless.HeadlessGenerator;
-import com.volmit.iris.engine.hunk.Hunk;
-import com.volmit.iris.engine.object.IrisBiome;
-import com.volmit.iris.engine.object.IrisDimension;
-import com.volmit.iris.engine.object.IrisPosition;
+import com.volmit.iris.engine.framework.headless.HeadlessGenerator;
+import com.volmit.iris.engine.object.basic.IrisPosition;
+import com.volmit.iris.engine.object.biome.IrisBiome;
 import com.volmit.iris.engine.object.common.IrisWorld;
-import com.volmit.iris.engine.parallel.BurstExecutor;
-import com.volmit.iris.engine.parallel.MultiBurst;
+import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.io.ReactiveFolder;
 import com.volmit.iris.util.math.M;
+import com.volmit.iris.util.nbt.mca.NBTWorld;
+import com.volmit.iris.util.nbt.tag.CompoundTag;
+import com.volmit.iris.util.parallel.BurstExecutor;
+import com.volmit.iris.util.parallel.MultiBurst;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.reflect.V;
 import com.volmit.iris.util.scheduling.ChronoLatch;
@@ -101,19 +101,15 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             @Override
             protected long loop() {
                 PrecisionStopwatch p = PrecisionStopwatch.start();
-                if(!tickHotloader())
-                {
+                if (!tickHotloader()) {
                     hotloaderMisses++;
-                }
-
-                else
-                {
+                } else {
                     hotloaderMisses = 0;
                 }
-                lastHotloadTime+= p.getMilliseconds();
+                lastHotloadTime += p.getMilliseconds();
                 lastHotloadTime /= 2;
 
-                return 120 + (long)(lastHotloadTime/2) + Math.min(hotloaderMisses * 125, 1375);
+                return 120 + (lastHotloadTime / 2) + Math.min(hotloaderMisses * 125, 1375);
             }
         };
         ticker.setPriority(Thread.MIN_PRIORITY);
@@ -122,8 +118,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         cleaner = new Looper() {
             @Override
             protected long loop() {
-                if(getComposite() != null)
-                {
+                if (getComposite() != null) {
                     getComposite().clean();
                 }
 
@@ -134,8 +129,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         cleaner.setName("Iris Parallax Manager");
         cleaner.start();
 
-        if(isStudio())
-        {
+        if (isStudio()) {
             ticker.start();
         }
 
@@ -572,7 +566,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
         try {
             int ox = x << 4;
             int oz = z << 4;
-            com.volmit.iris.engine.data.mca.Chunk chunk = writer.getChunk(x, z);
+            com.volmit.iris.util.nbt.mca.Chunk chunk = writer.getChunk(x, z);
             generateChunkRawData(w, x, z, MCATerrainChunk.builder()
                     .writer(writer).ox(ox).oz(oz).mcaChunk(chunk)
                     .minHeight(w.minHeight()).maxHeight(w.maxHeight())
@@ -584,7 +578,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
             e.printStackTrace();
             Iris.reportErrorChunk(x, z, e, "MCA");
             Iris.error("======================================");
-            com.volmit.iris.engine.data.mca.Chunk chunk = writer.getChunk(x, z);
+            com.volmit.iris.util.nbt.mca.Chunk chunk = writer.getChunk(x, z);
             CompoundTag c = NBTWorld.getCompound(ERROR_BLOCK);
             for (int i = 0; i < 16; i++) {
                 for (int j = 0; j < 16; j++) {
@@ -733,8 +727,7 @@ public class EngineCompositeGenerator extends ChunkGenerator implements IrisAcce
 
     @Override
     public void close() {
-        if(isStudio())
-        {
+        if (isStudio()) {
             ticker.interrupt();
         }
 
