@@ -25,3 +25,8 @@ jobs:
       run: chmod +x gradlew
     - name: Build with Gradle
       run: ./gradlew build
+    - name: Download a Build Artifact
+      uses: actions/download-artifact@v2.0.10  
+      with:
+        name: Package
+        path: build/libs
