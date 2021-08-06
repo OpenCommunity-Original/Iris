@@ -1,3 +1,4 @@
+[![Java CI with Gradle](https://github.com/OpenCommunity-Original/Iris/actions/workflows/gradle.yml/badge.svg)](https://github.com/OpenCommunity-Original/Iris/actions/workflows/gradle.yml)
 # Iris
 
 For 1.16 and below, see the 1.14-1.16 branch. The master branch is for the latest version of minecraft.
