@@ -21,12 +21,14 @@ package com.volmit.iris.util.parallel;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.io.InstanceState;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.Looper;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 public class MultiBurst {
     public static final MultiBurst burst = new MultiBurst("Iris", IrisSettings.get().getConcurrency().getMiscThreadPriority(), IrisSettings.getThreadCount(IrisSettings.get().getConcurrency().getMiscThreadCount()));
@@ -37,6 +39,7 @@ public class MultiBurst {
     private final String name;
     private final int tc;
     private final int priority;
+    private final int instance;
 
     public MultiBurst(int tc) {
         this("Iris", 6, tc);
@@ -46,20 +49,27 @@ public class MultiBurst {
         this.name = name;
         this.priority = priority;
         this.tc = tc;
+        instance = InstanceState.getInstanceId();
         last = new AtomicLong(M.ms());
         heartbeat = new Looper() {
             @Override
             protected long loop() {
+                if(instance != InstanceState.getInstanceId())
+                {
+                    shutdownNow();
+                    return -1;
+                }
+
                 if (M.ms() - last.get() > TimeUnit.MINUTES.toMillis(1) && service != null) {
                     service.shutdown();
                     service = null;
-                    Iris.debug("Shutting down MultiBurst Pool " + getName() + " to conserve resource.");
+                    Iris.debug("Shutting down MultiBurst Pool " + getName() + " to conserve resources.");
                 }
 
-                return 60000;
+                return 30000;
             }
         };
-        heartbeat.setName(name);
+        heartbeat.setName(name + " Monitor");
         heartbeat.start();
     }
 
@@ -121,6 +131,10 @@ public class MultiBurst {
 
     public CompletableFuture<?> complete(Runnable o) {
         return CompletableFuture.runAsync(o, getService());
+    }
+
+    public <T> CompletableFuture<T> completeValue(Supplier<T> o) {
+        return CompletableFuture.supplyAsync(o, getService());
     }
 
     public void shutdownNow() {

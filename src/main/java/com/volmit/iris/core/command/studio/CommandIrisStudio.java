@@ -30,6 +30,9 @@ public class CommandIrisStudio extends MortarCommand {
     private CommandIrisStudioCreate create;
 
     @Command
+    private CommandIrisStudioExecute execute;
+
+    @Command
     private CommandIrisStudioOpen open;
 
     @Command

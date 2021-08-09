@@ -21,10 +21,14 @@ package com.volmit.iris.core.command;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.plugin.Command;
 import com.volmit.iris.util.plugin.MortarCommand;
 import com.volmit.iris.util.plugin.VolmitSender;
 
 public class CommandIrisDebug extends MortarCommand {
+    @Command
+    private CommandIrisDebugSpawnerBoost boost;
+
     public CommandIrisDebug() {
         super("debug", "dbg");
         requiresPermission(Iris.perm.studio);

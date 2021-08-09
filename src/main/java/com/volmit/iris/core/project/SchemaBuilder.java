@@ -20,6 +20,7 @@ package com.volmit.iris.core.project;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.project.loader.IrisData;
+import com.volmit.iris.core.project.loader.IrisRegistrant;
 import com.volmit.iris.core.project.loader.ResourceLoader;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
@@ -28,9 +29,6 @@ import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.json.JSONArray;
 import com.volmit.iris.util.json.JSONObject;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.material.MaterialData;
 import org.bukkit.potion.PotionEffectType;
 
 import java.awt.*;
@@ -93,6 +91,25 @@ public class SchemaBuilder {
         o.put("description", getDescription(c));
         o.put("type", getType(c));
         JSONArray required = new JSONArray();
+
+        if (c.isAssignableFrom(IrisRegistrant.class) || IrisRegistrant.class.isAssignableFrom(c)) {
+            for (Field k : IrisRegistrant.class.getDeclaredFields()) {
+                k.setAccessible(true);
+
+                if (Modifier.isStatic(k.getModifiers()) || Modifier.isFinal(k.getModifiers()) || Modifier.isTransient(k.getModifiers())) {
+                    continue;
+                }
+
+                JSONObject property = buildProperty(k, c);
+
+                if (property.getBoolean("!required")) {
+                    required.put(k.getName());
+                }
+
+                property.remove("!required");
+                properties.put(k.getName(), property);
+            }
+        }
 
         for (Field k : c.getDeclaredFields()) {
             k.setAccessible(true);
@@ -225,11 +242,10 @@ public class SchemaBuilder {
                     prop.put("$ref", "#/definitions/" + key);
                     description.add(SYMBOL_TYPE__N + "  Must be a valid Item Type (use ctrl+space for auto complete!)");
 
-                } else if(k.isAnnotationPresent(RegistryListSpecialEntity.class)) {
+                } else if (k.isAnnotationPresent(RegistryListSpecialEntity.class)) {
                     String key = "enum-reg-specialentity";
 
-                    if(!definitions.containsKey(key))
-                    {
+                    if (!definitions.containsKey(key)) {
                         JSONObject j = new JSONObject();
                         KList<String> list = new KList<>();
                         list.addAll(Iris.linkMythicMobs.getMythicMobTypes().stream().map(s -> "MythicMobs:" + s).collect(Collectors.toList()));
@@ -540,7 +556,7 @@ public class SchemaBuilder {
             return "number";
         }
 
-        if (c.equals(boolean.class)||c.equals(Boolean.class)) {
+        if (c.equals(boolean.class) || c.equals(Boolean.class)) {
             return "boolean";
         }
 
@@ -570,7 +586,7 @@ public class SchemaBuilder {
         }
 
         // suppress warnings on bukkit classes
-        if (r.getDeclaringClass().getName().startsWith("org.bukkit.")){
+        if (r.getDeclaringClass().getName().startsWith("org.bukkit.")) {
             return "Bukkit package classes and enums have no descriptions";
         }
 

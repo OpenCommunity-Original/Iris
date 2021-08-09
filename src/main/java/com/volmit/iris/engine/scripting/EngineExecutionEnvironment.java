@@ -16,8 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.framework;
+package com.volmit.iris.engine.scripting;
 
-public interface IrisAccessProvider {
-    IrisAccess getAccess();
+import com.volmit.iris.engine.framework.Engine;
+import org.apache.bsf.BSFManager;
+
+public interface EngineExecutionEnvironment {
+    Engine getEngine();
+
+    IrisScriptingAPI getAPI();
+
+    BSFManager getManager();
+
+    void execute(String script);
+
+    Object evaluate(String script);
+
+    default void close() {
+
+    }
 }

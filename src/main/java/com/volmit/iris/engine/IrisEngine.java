@@ -18,17 +18,28 @@
 
 package com.volmit.iris.engine;
 
+import com.google.common.util.concurrent.AtomicDouble;
 import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.events.IrisEngineHotloadEvent;
+import com.volmit.iris.engine.actuator.IrisBiomeActuator;
+import com.volmit.iris.engine.actuator.IrisDecorantActuator;
+import com.volmit.iris.engine.actuator.IrisTerrainIslandActuator;
+import com.volmit.iris.engine.actuator.IrisTerrainNormalActuator;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.*;
+import com.volmit.iris.engine.modifier.IrisCaveModifier;
+import com.volmit.iris.engine.modifier.IrisDepositModifier;
+import com.volmit.iris.engine.modifier.IrisPostModifier;
+import com.volmit.iris.engine.modifier.IrisRavineModifier;
 import com.volmit.iris.engine.object.biome.IrisBiome;
 import com.volmit.iris.engine.object.biome.IrisBiomePaletteLayer;
 import com.volmit.iris.engine.object.decoration.IrisDecorator;
 import com.volmit.iris.engine.object.engine.IrisEngineData;
 import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
+import com.volmit.iris.engine.scripting.EngineExecutionEnvironment;
+import com.volmit.iris.util.atomics.AtomicRollingSequence;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.context.IrisContext;
@@ -37,96 +48,118 @@ import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.hunk.Hunk;
+import com.volmit.iris.util.hunk.storage.AtomicDoubleHunk;
+import com.volmit.iris.util.hunk.storage.AtomicLongHunk;
 import com.volmit.iris.util.io.IO;
+import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import org.bukkit.Chunk;
 import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.command.CommandSender;
 import org.bukkit.generator.BlockPopulator;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+@EqualsAndHashCode(callSuper = true)
+@Data
 public class IrisEngine extends BlockPopulator implements Engine {
-    @Getter
-    private final EngineCompound compound;
-
-    @Getter
+    // TODO: Remove block population, stop using bukkit
+    private final AtomicInteger generated;
+    private final AtomicInteger generatedLast;
+    private final AtomicDouble perSecond;
+    private final AtomicLong lastGPS;
     private final EngineTarget target;
-
-    @Getter
     private final IrisContext context;
-
-    @Getter
-    private final EngineFramework framework;
-
-    @Getter
     private final EngineEffects effects;
-
-    @Getter
+    private final ChronoLatch perSecondLatch;
+    private final EngineExecutionEnvironment execution;
     private final EngineWorldManager worldManager;
-
-    @Setter
-    @Getter
     private volatile int parallelism;
-
-    @Getter
-    private final int index;
-
-    @Getter
     private final EngineMetrics metrics;
-
-    @Setter
-    @Getter
     private volatile int minHeight;
+    private final boolean studio;
     private boolean failing;
     private boolean closed;
     private int cacheId;
+    private final AtomicRollingSequence wallClock;
     private final int art;
-
-    @Getter
     private double maxBiomeObjectDensity;
-
-    @Getter
     private double maxBiomeLayerDensity;
-
-    @Getter
     private double maxBiomeDecoratorDensity;
-
+    private final IrisComplex complex;
+    private final EngineParallaxManager engineParallax;
+    private final EngineActuator<BlockData> terrainNormalActuator;
+    private final EngineActuator<BlockData> terrainIslandActuator;
+    private final EngineActuator<BlockData> decorantActuator;
+    private final EngineActuator<Biome> biomeActuator;
+    private final EngineModifier<BlockData> depositModifier;
+    private final EngineModifier<BlockData> caveModifier;
+    private final EngineModifier<BlockData> ravineModifier;
+    private final EngineModifier<BlockData> postModifier;
     private final AtomicCache<IrisEngineData> engineData = new AtomicCache<>();
+    private final AtomicBoolean cleaning;
+    private final ChronoLatch cleanLatch;
 
-    public IrisEngine(EngineTarget target, EngineCompound compound, int index) {
-        Iris.info("Initializing Engine: " + target.getWorld().name() + "/" + target.getDimension().getLoadKey() + " (" + target.getHeight() + " height)");
+    public IrisEngine(EngineTarget target, boolean studio) {
+        this.studio = studio;
+        generatedLast = new AtomicInteger(0);
+        perSecond = new AtomicDouble(0);
+        perSecondLatch = new ChronoLatch(1000, false);
+        wallClock = new AtomicRollingSequence(32);
+        lastGPS = new AtomicLong(M.ms());
+        generated = new AtomicInteger(0);
+        execution = new IrisExecutionEnvironment(this);
+        // TODO: HEIGHT ------------------------------------------------------------------------------------------------------>
+        Iris.info("Initializing Engine: " + target.getWorld().name() + "/" + target.getDimension().getLoadKey() + " (" + 256+ " height)");
         metrics = new EngineMetrics(32);
         this.target = target;
         getData().setEngine(this);
         getEngineData();
-        this.framework = new IrisEngineFramework(this);
         worldManager = new IrisWorldManager(this);
-        this.compound = compound;
         minHeight = 0;
         failing = false;
         closed = false;
-        this.index = index;
         cacheId = RNG.r.nextInt();
         effects = new IrisEngineEffects(this);
         art = J.ar(effects::tickRandomPlayer, 0);
         J.a(this::computeBiomeMaxes);
-        Iris.callEvent(new IrisEngineHotloadEvent(this));
         context = new IrisContext(this);
         context.touch();
+        this.complex = new IrisComplex(this);
+        this.engineParallax = new IrisEngineParallax(this);
+        this.terrainNormalActuator = new IrisTerrainNormalActuator(this);
+        this.terrainIslandActuator = new IrisTerrainIslandActuator(this);
+        this.decorantActuator = new IrisDecorantActuator(this);
+        this.biomeActuator = new IrisBiomeActuator(this);
+        this.depositModifier = new IrisDepositModifier(this);
+        this.ravineModifier = new IrisRavineModifier(this);
+        this.caveModifier = new IrisCaveModifier(this);
+        this.postModifier = new IrisPostModifier(this);
+        cleaning = new AtomicBoolean(false);
+        cleanLatch = new ChronoLatch(Math.max(10000, Math.min(IrisSettings.get().getParallax()
+                .getParallaxChunkEvictionMS(), IrisSettings.get().getParallax().getParallaxRegionEvictionMS())));
+
     }
 
     @Override
     public IrisEngineData getEngineData() {
+        World w = null;
+
         return engineData.aquire(() -> {
-            File f = new File(getWorld().worldFolder(), "iris/engine-data/" + getDimension().getLoadKey() + "-" + getIndex() + ".json");
+            //TODO: Method this file
+            File f = new File(getWorld().worldFolder(), "iris/engine-data/" + getDimension().getLoadKey() + ".json");
 
             if (!f.exists()) {
                 try {
@@ -145,6 +178,36 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
             return new IrisEngineData();
         });
+    }
+
+    @Override
+    public int getGenerated() {
+        return generated.get();
+    }
+
+    @Override
+    public double getGeneratedPerSecond() {
+        if(perSecondLatch.flip())
+        {
+            double g = generated.get() - generatedLast.get();
+            generatedLast.set(generated.get());
+
+            if(g == 0)
+            {
+                return 0;
+            }
+
+            long dur = M.ms() - lastGPS.get();
+            lastGPS.set(M.ms());
+            perSecond.set(1000D / ((double)dur / g));
+        }
+
+        return perSecond.get();
+    }
+
+    @Override
+    public boolean isStudio() {
+        return studio;
     }
 
     private void computeBiomeMaxes() {
@@ -173,14 +236,78 @@ public class IrisEngine extends BlockPopulator implements Engine {
         }
     }
 
+
+    public void printMetrics(CommandSender sender) {
+        KMap<String, Double> totals = new KMap<>();
+        KMap<String, Double> weights = new KMap<>();
+        double masterWallClock = wallClock.getAverage();
+        KMap<String, Double> timings = getMetrics().pull();
+        double totalWeight = 0;
+        double wallClock = getMetrics().getTotal().getAverage();
+
+        for (double j : timings.values()) {
+            totalWeight += j;
+        }
+
+        for (String j : timings.k()) {
+            weights.put(getName() + "."  + j, (wallClock / totalWeight) * timings.get(j));
+        }
+
+        totals.put(getName(), wallClock);
+
+        double mtotals = 0;
+
+        for (double i : totals.values()) {
+            mtotals += i;
+        }
+
+        for (String i : totals.k()) {
+            totals.put(i, (masterWallClock / mtotals) * totals.get(i));
+        }
+
+        double v = 0;
+
+        for (double i : weights.values()) {
+            v += i;
+        }
+
+        for (String i : weights.k()) {
+            weights.put(i, weights.get(i) / v);
+        }
+
+        sender.sendMessage("Total: " + C.BOLD + C.WHITE + Form.duration(masterWallClock, 0));
+
+        for (String i : totals.k()) {
+            sender.sendMessage("  Engine " + C.UNDERLINE + C.GREEN + i + C.RESET + ": " + C.BOLD + C.WHITE + Form.duration(totals.get(i), 0));
+        }
+
+        sender.sendMessage("Details: ");
+
+        for (String i : weights.sortKNumber().reverse()) {
+            String befb = C.UNDERLINE + "" + C.GREEN + "" + i.split("\\Q[\\E")[0] + C.RESET + C.GRAY + "[";
+            String num = C.GOLD + i.split("\\Q[\\E")[1].split("]")[0] + C.RESET + C.GRAY + "].";
+            String afb = C.ITALIC + "" + C.AQUA + i.split("\\Q]\\E")[1].substring(1) + C.RESET + C.GRAY;
+
+            sender.sendMessage("  " + befb + num + afb + ": " + C.BOLD + C.WHITE + Form.pc(weights.get(i), 0));
+        }
+    }
+
+
     @Override
     public void close() {
         J.car(art);
         closed = true;
         getWorldManager().close();
-        getFramework().close();
         getTarget().close();
         saveEngineData();
+        getEngineParallax().close();
+        getTerrainActuator().close();
+        getDecorantActuator().close();
+        getBiomeActuator().close();
+        getDepositModifier().close();
+        getRavineModifier().close();
+        getCaveModifier().close();
+        getPostModifier().close();
     }
 
     @Override
@@ -190,7 +317,35 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
     @Override
     public void recycle() {
-        getFramework().recycle();
+        if (!cleanLatch.flip()) {
+            return;
+        }
+
+        if (cleaning.get()) {
+            cleanLatch.flipDown();
+            return;
+        }
+
+        cleaning.set(true);
+
+        try {
+            getParallax().cleanup();
+            getData().getObjectLoader().clean();
+        } catch (Throwable e) {
+            Iris.reportError(e);
+            Iris.error("Cleanup failed!");
+            e.printStackTrace();
+        }
+
+        cleaning.lazySet(false);
+    }
+
+
+    public EngineActuator<BlockData> getTerrainActuator() {
+        return switch (getDimension().getTerrainMode()) {
+            case NORMAL -> getTerrainNormalActuator();
+            case ISLANDS -> getTerrainIslandActuator();
+        };
     }
 
     @BlockCoordinates
@@ -205,7 +360,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         return z / getDimension().getTerrainZoom();
     }
 
-    @ChunkCoordinates
+    @BlockCoordinates
     @Override
     public void generate(int x, int z, Hunk<BlockData> vblocks, Hunk<Biome> vbiomes, boolean multicore) {
         context.touch();
@@ -216,36 +371,23 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
             switch (getDimension().getTerrainMode()) {
                 case NORMAL -> {
-                    getFramework().getEngineParallax().generateParallaxArea(x >> 4, z >> 4);
-                    getFramework().getTerrainActuator().actuate(x, z, vblocks, multicore);
-                    getFramework().getBiomeActuator().actuate(x, z, vbiomes, multicore);
-                    getFramework().getCaveModifier().modify(x, z, vblocks, multicore);
-                    getFramework().getRavineModifier().modify(x, z, vblocks, multicore);
-                    getFramework().getPostModifier().modify(x, z, vblocks, multicore);
-                    getFramework().getDecorantActuator().actuate(x, z, blocks, multicore);
-                    getFramework().getEngineParallax().insertParallax(x >> 4, z >> 4, blocks);
-                    getFramework().getDepositModifier().modify(x, z, blocks, multicore);
+                    getEngineParallax().generateParallaxArea(x >> 4, z >> 4);
+                    getTerrainActuator().actuate(x, z, vblocks, multicore);
+                    getBiomeActuator().actuate(x, z, vbiomes, multicore);
+                    getCaveModifier().modify(x, z, vblocks, multicore);
+                    getRavineModifier().modify(x, z, vblocks, multicore);
+                    getPostModifier().modify(x, z, vblocks, multicore);
+                    getDecorantActuator().actuate(x, z, blocks, multicore);
+                    getEngineParallax().insertParallax(x >> 4, z >> 4, blocks);
+                    getDepositModifier().modify(x, z, blocks, multicore);
                 }
                 case ISLANDS -> {
-                    getFramework().getTerrainActuator().actuate(x, z, vblocks, multicore);
-
+                    getTerrainActuator().actuate(x, z, vblocks, multicore);
                 }
             }
 
             getMetrics().getTotal().put(p.getMilliseconds());
-
-            if (IrisSettings.get().getGeneral().isDebug()) {
-                KList<String> v = new KList<>();
-                KMap<String, Double> g = getMetrics().pull();
-
-                for (String i : g.sortKNumber()) {
-                    if (g.get(i) != null) {
-                        v.add(C.RESET + "" + C.LIGHT_PURPLE + i + ": " + C.UNDERLINE + C.BLUE + Form.duration(g.get(i), 0) + C.RESET + C.GRAY + "");
-                    }
-                }
-
-                Iris.debug(v.toString(", "));
-            }
+            generated.incrementAndGet();
         } catch (Throwable e) {
             Iris.reportError(e);
             fail("Failed to generate " + x + ", " + z, e);
@@ -254,11 +396,14 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
     @Override
     public void saveEngineData() {
-        File f = new File(getWorld().worldFolder(), "iris/engine-data/" + getDimension().getLoadKey() + "-" + getIndex() + ".json");
+        //TODO: Method this file
+        File f = new File(getWorld().worldFolder(), "iris/engine-data/" + getDimension().getLoadKey() + ".json");
         f.getParentFile().mkdirs();
         try {
             IO.writeAll(f, new Gson().toJson(getEngineData()));
+            Iris.debug("Saved Engine Data");
         } catch (IOException e) {
+            Iris.error("Failed to save Engine Data");
             e.printStackTrace();
         }
     }
@@ -272,6 +417,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         return getData().getBiomeLoader().load(getDimension().getFocus());
     }
 
+    // TODO: Remove block population
     @ChunkCoordinates
     @Override
     public void populate(World world, Random random, Chunk c) {
@@ -294,12 +440,5 @@ public class IrisEngine extends BlockPopulator implements Engine {
     @Override
     public int getCacheID() {
         return cacheId;
-    }
-
-    @Override
-    public void hotload() {
-        Iris.callEvent(new IrisEngineHotloadEvent(this));
-        getEngineData().getStatistics().hotloaded();
-        cacheId = RNG.r.nextInt();
     }
 }

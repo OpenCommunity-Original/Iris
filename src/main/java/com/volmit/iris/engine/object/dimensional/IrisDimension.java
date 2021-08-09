@@ -34,7 +34,6 @@ import com.volmit.iris.engine.object.carve.IrisCaveFluid;
 import com.volmit.iris.engine.object.carve.IrisCaveLayer;
 import com.volmit.iris.engine.object.carve.IrisCaverns;
 import com.volmit.iris.engine.object.deposits.IrisDepositGenerator;
-import com.volmit.iris.engine.object.villager.IrisVillagerOverride;
 import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
 import com.volmit.iris.engine.object.feature.IrisFeaturePotential;
 import com.volmit.iris.engine.object.jigsaw.IrisJigsawStructure;
@@ -47,6 +46,7 @@ import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
 import com.volmit.iris.engine.object.regional.IrisRegion;
 import com.volmit.iris.engine.object.spawners.IrisSpawner;
 import com.volmit.iris.engine.object.trees.IrisTreeSettings;
+import com.volmit.iris.engine.object.villager.IrisVillagerOverride;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.data.DataProvider;
 import com.volmit.iris.util.io.IO;
@@ -315,6 +315,9 @@ public class IrisDimension extends IrisRegistrant {
     @ArrayType(min = 1, type = IrisCarveLayer.class)
     @Desc("Define carve layers")
     private KList<IrisCarveLayer> carveLayers = new KList<>();
+
+    @Desc("If true, the spawner system has infinite energy. This is NOT recommended because it would allow for mobs to keep spawning over and over without a rate limit")
+    private boolean infiniteEnergy = false;
 
     @MinNumber(0.0001)
     @MaxNumber(512)

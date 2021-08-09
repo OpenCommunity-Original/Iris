@@ -16,43 +16,33 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.framework;
+package com.volmit.iris.engine.platform;
 
 import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.IrisComplex;
+import com.volmit.iris.engine.framework.Engine;
+import com.volmit.iris.engine.framework.EngineTarget;
+import com.volmit.iris.engine.framework.Hotloadable;
 import com.volmit.iris.util.data.DataProvider;
-import org.bukkit.block.Biome;
-import org.bukkit.block.data.BlockData;
 
-public interface EngineFramework extends DataProvider {
+import java.io.File;
+
+public interface PlatformChunkGenerator extends Hotloadable, DataProvider {
     Engine getEngine();
 
-    IrisComplex getComplex();
+    boolean isHeadless();
 
-    EngineParallaxManager getEngineParallax();
-
-    default IrisData getData() {
-        return getComplex().getData();
+    @Override
+    default IrisData getData()
+    {
+        return getEngine().getData();
     }
 
-    default void recycle() {
-        getEngine().getParallax().cleanup();
-        getData().getObjectLoader().clean();
+    default EngineTarget getTarget()
+    {
+        return getEngine().getTarget();
     }
-
-    EngineActuator<BlockData> getTerrainActuator();
-
-    EngineActuator<BlockData> getDecorantActuator();
-
-    EngineActuator<Biome> getBiomeActuator();
-
-    EngineModifier<BlockData> getCaveModifier();
-
-    EngineModifier<BlockData> getRavineModifier();
-
-    EngineModifier<BlockData> getDepositModifier();
-
-    EngineModifier<BlockData> getPostModifier();
 
     void close();
+
+    boolean isStudio();
 }
