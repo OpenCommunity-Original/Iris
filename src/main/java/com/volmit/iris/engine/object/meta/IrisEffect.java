@@ -20,7 +20,7 @@ package com.volmit.iris.engine.object.meta;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.framework.GeneratorAccess;
+import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.scheduling.ChronoLatch;
@@ -202,7 +202,7 @@ public class IrisEffect {
         });
     }
 
-    public void apply(Player p, GeneratorAccess g) {
+    public void apply(Player p, Engine g) {
         if (!canTick()) {
             return;
         }

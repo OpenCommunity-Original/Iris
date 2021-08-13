@@ -24,14 +24,9 @@ import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.nms.INMS;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.core.project.loader.ResourceLoader;
-import com.volmit.iris.core.report.Report;
-import com.volmit.iris.core.report.ReportType;
 import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.core.tools.IrisWorldCreator;
-import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.biome.IrisBiome;
-import com.volmit.iris.engine.object.biome.IrisBiomeMutation;
-import com.volmit.iris.engine.object.biome.IrisBiomePaletteLayer;
 import com.volmit.iris.engine.object.block.IrisBlockData;
 import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.engine.object.entity.IrisEntity;
@@ -51,7 +46,6 @@ import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.json.JSONArray;
 import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.math.M;
-import com.volmit.iris.util.parallel.MultiBurst;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.J;
@@ -175,67 +169,14 @@ public class IrisProject {
             }
         });
 
-        String wfp = "iris/" + UUID.randomUUID();
 
-        WorldCreator c = new IrisWorldCreator().dimension(getName())
+        J.a(() -> activeProvider = (PlatformChunkGenerator) IrisToolbelt.createWorld()
                 .seed(1337)
-                .name(wfp)
-                .studioMode()
-                .create();
-
-        PlatformChunkGenerator gx = ((PlatformChunkGenerator) c.generator());
-        O<Boolean> done = new O<>();
-        done.set(false);
-        activeProvider = gx;
-
-        J.a(() ->
-        {
-            double last = 0;
-            int req = 400;
-
-            while (gx.getEngine().getGenerated() < req) {
-                assert gx != null;
-                double v = (double) gx.getEngine().getGenerated() / (double) req;
-
-                if (sender.isPlayer()) {
-                    sender.sendProgress(v, "Generating");
-                    J.sleep(16);
-                } else {
-                    sender.sendProgress(v, "Generating");
-                    J.sleep(16);
-                }
-            }
-            if (sender.isPlayer()) {
-                sender.player().spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(C.WHITE + "Generation Complete"));
-            }
-        });
-
-        //@builder
-        World world = INMS.get().createWorld(c);
-        if (IrisSettings.get().getStudio().isDisableTimeAndWeather()) {
-            world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
-            world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
-            world.setTime(6000);
-        }
-        Iris.linkMultiverseCore.removeFromConfig(world);
-
-        done.set(true);
-
-        if (sender.isPlayer()) {
-            assert world != null;
-            sender.player().teleport(world.getSpawnLocation());
-        } else {
-            sender.sendAction(C.IRIS + "Generation Complete");
-        }
-
-        Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, () ->
-        {
-            if (sender.isPlayer()) {
-                sender.player().setGameMode(GameMode.SPECTATOR);
-            }
-
-            onDone.run();
-        }, 0);
+                .sender(sender)
+                .studio(true)
+                .name("iris/" + UUID.randomUUID())
+                .dimension(d.getLoadKey())
+                .create().getGenerator());
     }
 
     public void close() {
@@ -411,51 +352,12 @@ public class IrisProject {
             }
         }
 
-        for (IrisBiomeMutation i : dimension.getMutations()) {
-            for (IrisObjectPlacement j : i.getObjects()) {
-                b.append(j.hashCode());
-                KList<String> newNames = new KList<>();
-
-                for (String k : j.getPlace()) {
-                    if (renameObjects.containsKey(k)) {
-                        newNames.add(renameObjects.get(k));
-                        continue;
-                    }
-
-                    String name = !obfuscate ? k : UUID.randomUUID().toString().replaceAll("-", "");
-                    b.append(name);
-                    newNames.add(name);
-                    renameObjects.put(k, name);
-                }
-
-                j.setPlace(newNames);
-            }
-        }
-
         KMap<String, KList<String>> lookupObjects = renameObjects.flip();
         StringBuilder gb = new StringBuilder();
         ChronoLatch cl = new ChronoLatch(1000);
         O<Integer> ggg = new O<>();
         ggg.set(0);
         biomes.forEach((i) -> i.getObjects().forEach((j) -> j.getPlace().forEach((k) ->
-        {
-            try {
-                File f = dm.getObjectLoader().findFile(lookupObjects.get(k).get(0));
-                IO.copyFile(f, new File(folder, "objects/" + k + ".iob"));
-                gb.append(IO.hash(f));
-                ggg.set(ggg.get() + 1);
-
-                if (cl.flip()) {
-                    int g = ggg.get();
-                    ggg.set(0);
-                    sender.sendMessage("Wrote another " + g + " Objects");
-                }
-            } catch (Throwable e) {
-                Iris.reportError(e);
-            }
-        })));
-
-        dimension.getMutations().forEach((i) -> i.getObjects().forEach((j) -> j.getPlace().forEach((k) ->
         {
             try {
                 File f = dm.getObjectLoader().findFile(lookupObjects.get(k).get(0));

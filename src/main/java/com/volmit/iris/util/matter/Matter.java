@@ -33,8 +33,6 @@ import java.io.*;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 /**
  * When Red Matter isn't enough
@@ -186,18 +184,19 @@ public interface Matter {
     }
 
     default <T> MatterSlice<T> slice(Class<?> c) {
-        if (!hasSlice(c)) {
-            MatterSlice<?> s = createSlice(c, this);
+        MatterSlice<T> slice = (MatterSlice<T>) getSlice(c);
+        if (slice == null) {
+            slice = (MatterSlice<T>) createSlice(c, this);
 
-            if (s == null) {
+            if (slice == null) {
                 Iris.error("Unable to find a slice for class " + C.DARK_RED + c.getCanonicalName());
                 return null;
             }
 
-            putSlice(c, (MatterSlice<T>) s);
+            putSlice(c, slice);
         }
 
-        return (MatterSlice<T>) getSlice(c);
+        return slice;
     }
 
     /**
@@ -255,10 +254,13 @@ public interface Matter {
     Map<Class<?>, MatterSlice<?>> getSliceMap();
 
     default void write(File f) throws IOException {
-        FileOutputStream out = new FileOutputStream(f);
-        GZIPOutputStream gzo = new GZIPOutputStream(out);
-        write(gzo);
-        gzo.close();
+        write(f, true);
+    }
+
+    default void write(File f, boolean compression) throws IOException {
+        OutputStream out = new FileOutputStream(f);
+        write(out);
+        out.close();
     }
 
     /**
@@ -310,9 +312,8 @@ public interface Matter {
 
     static Matter read(File f) throws IOException, ClassNotFoundException {
         FileInputStream in = new FileInputStream(f);
-        GZIPInputStream gzi = new GZIPInputStream(in);
-        Matter m = read(gzi);
-        gzi.close();
+        Matter m = read(in);
+        in.close();
         return m;
     }
 

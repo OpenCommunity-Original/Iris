@@ -106,6 +106,18 @@ public interface MatterSlice<T> extends Hunk<T> {
         return readFrom(mediumType) != null;
     }
 
+    default int getBitsPer(int needed) {
+        int target = 1;
+        for (int i = 1; i < 8; i++) {
+            if (Math.pow(2, i) > needed) {
+                target = i;
+                break;
+            }
+        }
+
+        return target;
+    }
+
     default void write(DataOutputStream dos) throws IOException {
         int w = getWidth();
         int h = getHeight();

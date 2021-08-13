@@ -24,6 +24,7 @@ import com.volmit.iris.core.gui.components.Renderer;
 import com.volmit.iris.core.project.loader.IrisData;
 import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.object.basic.IrisColor;
 import com.volmit.iris.engine.object.basic.IrisPosition;
 import com.volmit.iris.engine.object.biome.IrisBiome;
@@ -34,8 +35,8 @@ import com.volmit.iris.engine.object.loot.IrisLootMode;
 import com.volmit.iris.engine.object.loot.IrisLootReference;
 import com.volmit.iris.engine.object.loot.IrisLootTable;
 import com.volmit.iris.engine.object.meta.InventorySlotType;
+import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
 import com.volmit.iris.engine.object.regional.IrisRegion;
-import com.volmit.iris.engine.parallax.ParallaxAccess;
 import com.volmit.iris.engine.scripting.EngineExecutionEnvironment;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -46,6 +47,7 @@ import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.hunk.Hunk;
+import com.volmit.iris.util.mantle.MantleFlag;
 import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
@@ -75,14 +77,14 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootProvider, BlockUpdater, Renderer {
+public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdater, Renderer {
     IrisComplex getComplex();
 
     void printMetrics(CommandSender sender);
 
-    void recycle();
+    EngineMantle getMantle();
 
-    EngineParallaxManager getEngineParallax();
+    void recycle();
 
     EngineActuator<BlockData> getTerrainActuator();
 
@@ -126,8 +128,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     void setMinHeight(int min);
 
-    default int getMinHeight()
-    {
+    default int getMinHeight() {
         return getTarget().getWorld().minHeight();
     }
 
@@ -143,13 +144,13 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
     EngineMetrics getMetrics();
 
     default void save() {
-        getParallax().saveAll();
+        getMantle().save();
         getWorldManager().onSave();
         saveEngineData();
     }
 
     default void saveNow() {
-        getParallax().saveAllNOW();
+        getMantle().saveAllNow();
         saveEngineData();
     }
 
@@ -171,10 +172,6 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
         return getTarget().getDimension();
     }
 
-    default ParallaxAccess getParallax() {
-        return getTarget().getParallaxWorld();
-    }
-
     @BlockCoordinates
     default Color draw(double x, double z) {
         IrisRegion region = getRegion((int) x, (int) z);
@@ -191,37 +188,28 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
     }
 
     @BlockCoordinates
-    @Override
     default IrisRegion getRegion(int x, int z) {
         return getComplex().getRegionStream().get(x, z);
     }
 
-    @Override
-    default ParallaxAccess getParallaxAccess() {
-        return getParallax();
-    }
-
     @BlockCoordinates
-    @Override
     default IrisBiome getCaveBiome(int x, int z) {
         return getComplex().getCaveBiomeStream().get(x, z);
     }
 
     @BlockCoordinates
-    @Override
     default IrisBiome getSurfaceBiome(int x, int z) {
         return getComplex().getTrueBiomeStream().get(x, z);
     }
 
     @BlockCoordinates
-    @Override
     default int getHeight(int x, int z) {
         return getHeight(x, z, true);
     }
 
     @BlockCoordinates
     default int getHeight(int x, int z, boolean ignoreFluid) {
-        return getEngineParallax().getHighest(x, z, getData(), ignoreFluid);
+        return getMantle().getHighest(x, z, getData(), ignoreFluid);
     }
 
     @BlockCoordinates
@@ -232,8 +220,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
         }
 
         if (B.isUpdatable(data)) {
-            getParallax().updateBlock(x, y, z);
-            getParallax().getMetaRW(x >> 4, z >> 4).setUpdates(true);
+            getMantle().updateBlock(x, y, z);
         }
     }
 
@@ -246,23 +233,17 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
     @Override
     default void updateChunk(Chunk c) {
         PrecisionStopwatch p = PrecisionStopwatch.start();
-        if (getParallax().getMetaR(c.getX(), c.getZ()).isUpdates()) {
-            Hunk<Boolean> b = getParallax().getUpdatesR(c.getX(), c.getZ());
+        getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), Boolean.class, (x, y, z, v) -> {
+            if (v != null && v) {
+                int vx = x & 15;
+                int vz = z & 15;
+                update(x, y, z, c, new RNG(Cache.key(c.getX(), c.getZ())));
 
-            b.iterateSync((x, y, z, v) -> {
-
-                if (v != null && v) {
-                    int vx = x & 15;
-                    int vz = z & 15;
-                    update(x, y, z, c, new RNG(Cache.key(c.getX(), c.getZ())));
-
-                    if (vx > 0 && vx < 15 && vz > 0 && vz < 15) {
-                        updateLighting(x, y, z, c);
-                    }
+                if (vx > 0 && vx < 15 && vz > 0 && vz < 15) {
+                    updateLighting(x, y, z, c);
                 }
-            });
-        }
-
+            }
+        }, MantleFlag.UPDATE);
         getMetrics().getUpdates().put(p.getMilliseconds());
     }
 
@@ -277,7 +258,6 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
                 block.setBlockData(data, true);
             } catch (Exception e) {
                 Iris.reportError(e);
-                // Issue when adding block data. Suppress massive warnings and stack-traces to console.
             }
         }
     }
@@ -423,7 +403,7 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
     }
 
     default void clean() {
-        burst().lazy(() -> getParallax().cleanup());
+        burst().lazy(() -> getMantle().trim());
     }
 
     @BlockCoordinates
@@ -466,28 +446,23 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     int getGenerated();
 
-    default <T> IrisPosition lookForStreamResult(T find, ProceduralStream<T> stream, Function2<T, T, Boolean> matcher, long timeout)
-    {
+    default <T> IrisPosition lookForStreamResult(T find, ProceduralStream<T> stream, Function2<T, T, Boolean> matcher, long timeout) {
         AtomicInteger checked = new AtomicInteger();
         AtomicLong time = new AtomicLong(M.ms());
         AtomicReference<IrisPosition> r = new AtomicReference<>();
         BurstExecutor b = burst().burst();
 
-        while(M.ms() - time.get() < timeout && r.get() == null)
-        {
+        while (M.ms() - time.get() < timeout && r.get() == null) {
             b.queue(() -> {
-                for(int i = 0; i < 1000; i++)
-                {
-                    if(M.ms() - time.get() > timeout)
-                    {
+                for (int i = 0; i < 1000; i++) {
+                    if (M.ms() - time.get() > timeout) {
                         return;
                     }
 
                     int x = RNG.r.i(-29999970, 29999970);
                     int z = RNG.r.i(-29999970, 29999970);
                     checked.incrementAndGet();
-                    if(matcher.apply(stream.get(x, z), find))
-                    {
+                    if (matcher.apply(stream.get(x, z), find)) {
                         r.set(new IrisPosition(x, 120, z));
                         time.set(0);
                     }
@@ -636,10 +611,58 @@ public interface Engine extends DataProvider, Fallible, GeneratorAccess, LootPro
 
     double getGeneratedPerSecond();
 
-    default int getHeight()
-    {
+    default int getHeight() {
         return getWorld().getHeight();
     }
 
     boolean isStudio();
+
+    default IrisBiome getBiome(int x, int y, int z) {
+        if (y <= getHeight(x, z) - 2) {
+            return getCaveBiome(x, z);
+        }
+
+        return getSurfaceBiome(x, z);
+    }
+
+    default String getObjectPlacementKey(int x, int y, int z) {
+        PlacedObject o = getObjectPlacement(x, y, z);
+
+        if (o != null && o.getObject() != null) {
+            return o.getObject().getLoadKey() + "@" + o.getId();
+        }
+
+        return null;
+    }
+
+    default PlacedObject getObjectPlacement(int x, int y, int z) {
+        String objectAt = getMantle().getMantle().get(x, y, z, String.class);
+
+        if (objectAt == null || objectAt.isEmpty()) {
+            return null;
+        }
+
+        String[] v = objectAt.split("\\Q@\\E");
+        String object = v[0];
+        int id = Integer.parseInt(v[1]);
+        IrisRegion region = getRegion(x, z);
+
+        for (IrisObjectPlacement i : region.getObjects()) {
+            if (i.getPlace().contains(object)) {
+                return new PlacedObject(i, getData().getObjectLoader().load(object), id, x, z);
+            }
+        }
+
+        IrisBiome biome = getBiome(x, y, z);
+
+        for (IrisObjectPlacement i : biome.getObjects()) {
+            if (i.getPlace().contains(object)) {
+                return new PlacedObject(i, getData().getObjectLoader().load(object), id, x, z);
+            }
+        }
+
+        return new PlacedObject(null, getData().getObjectLoader().load(object), id, x, z);
+    }
+
+    int getCacheID();
 }

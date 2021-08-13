@@ -16,21 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine;
+package com.volmit.iris.util.decree;
 
-import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.framework.EngineParallaxManager;
-import lombok.Getter;
-
-public class IrisEngineParallax implements EngineParallaxManager {
-    @Getter
-    private final Engine engine;
-
-    @Getter
-    private final int parallaxSize;
-
-    public IrisEngineParallax(Engine engine) {
-        this.engine = engine;
-        parallaxSize = computeParallaxSize();
-    }
+public class DecreeCommand {
 }

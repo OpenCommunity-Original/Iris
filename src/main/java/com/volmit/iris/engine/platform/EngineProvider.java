@@ -27,7 +27,6 @@ import com.volmit.iris.engine.framework.EngineTarget;
 import com.volmit.iris.engine.object.common.IrisWorld;
 import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.util.parallel.MultiBurst;
-import org.bukkit.generator.BlockPopulator;
 
 import java.io.File;
 import java.util.concurrent.CompletableFuture;
@@ -43,6 +42,12 @@ public class EngineProvider {
         engine.set(MultiBurst.burst.completeValue(() -> {
             IrisData data = new IrisData(dataLocation);
             IrisDimension realDimension = data.getDimensionLoader().load(dimension);
+
+            if(realDimension == null)
+            {
+                throw new RuntimeException("Cannot find dimension in " + data.getDataFolder().getAbsolutePath() + " with key " + dimension);
+            }
+
             EngineTarget target = new EngineTarget(world, realDimension, data);
             Engine engine = new IrisEngine(target, studio);
             post.accept(engine);
@@ -51,26 +56,29 @@ public class EngineProvider {
         engine.get().whenComplete((e, x) -> Iris.callEvent(new IrisEngineHotloadEvent(e)));
     }
 
-    public Engine getEngine()
-    {
+    public Engine getEngine() {
         try {
-            return engine.get().get();
+            Engine e = engine.get().get();
+
+            if (e == null) {
+                throw new RuntimeException("NULL");
+            }
+
+            return e;
         } catch (InterruptedException e) {
             e.printStackTrace();
+            throw new RuntimeException("INTERRUPTED");
         } catch (ExecutionException e) {
             e.printStackTrace();
+            throw new RuntimeException("EXECUTION ERROR");
         }
-
-        return null;
     }
 
     public void close() {
-        if(engine.get() != null && engine.get().isDone())
-        {
+        if (engine.get() != null && engine.get().isDone()) {
             Engine e = getEngine();
 
-            if(e != null)
-            {
+            if (e != null) {
                 e.close();
             }
         }

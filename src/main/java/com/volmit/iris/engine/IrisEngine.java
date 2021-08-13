@@ -22,13 +22,13 @@ import com.google.common.util.concurrent.AtomicDouble;
 import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
-import com.volmit.iris.core.events.IrisEngineHotloadEvent;
 import com.volmit.iris.engine.actuator.IrisBiomeActuator;
 import com.volmit.iris.engine.actuator.IrisDecorantActuator;
 import com.volmit.iris.engine.actuator.IrisTerrainIslandActuator;
 import com.volmit.iris.engine.actuator.IrisTerrainNormalActuator;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.*;
+import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.modifier.IrisCaveModifier;
 import com.volmit.iris.engine.modifier.IrisDepositModifier;
 import com.volmit.iris.engine.modifier.IrisPostModifier;
@@ -40,7 +40,6 @@ import com.volmit.iris.engine.object.engine.IrisEngineData;
 import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
 import com.volmit.iris.engine.scripting.EngineExecutionEnvironment;
 import com.volmit.iris.util.atomics.AtomicRollingSequence;
-import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.documentation.BlockCoordinates;
@@ -48,8 +47,6 @@ import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.hunk.Hunk;
-import com.volmit.iris.util.hunk.storage.AtomicDoubleHunk;
-import com.volmit.iris.util.hunk.storage.AtomicLongHunk;
 import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
@@ -83,6 +80,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
     private final EngineTarget target;
     private final IrisContext context;
     private final EngineEffects effects;
+    private final EngineMantle mantle;
     private final ChronoLatch perSecondLatch;
     private final EngineExecutionEnvironment execution;
     private final EngineWorldManager worldManager;
@@ -99,7 +97,6 @@ public class IrisEngine extends BlockPopulator implements Engine {
     private double maxBiomeLayerDensity;
     private double maxBiomeDecoratorDensity;
     private final IrisComplex complex;
-    private final EngineParallaxManager engineParallax;
     private final EngineActuator<BlockData> terrainNormalActuator;
     private final EngineActuator<BlockData> terrainIslandActuator;
     private final EngineActuator<BlockData> decorantActuator;
@@ -122,7 +119,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         generated = new AtomicInteger(0);
         execution = new IrisExecutionEnvironment(this);
         // TODO: HEIGHT ------------------------------------------------------------------------------------------------------>
-        Iris.info("Initializing Engine: " + target.getWorld().name() + "/" + target.getDimension().getLoadKey() + " (" + 256+ " height)");
+        Iris.info("Initializing Engine: " + target.getWorld().name() + "/" + target.getDimension().getLoadKey() + " (" + 256 + " height)");
         metrics = new EngineMetrics(32);
         this.target = target;
         getData().setEngine(this);
@@ -138,7 +135,6 @@ public class IrisEngine extends BlockPopulator implements Engine {
         context = new IrisContext(this);
         context.touch();
         this.complex = new IrisComplex(this);
-        this.engineParallax = new IrisEngineParallax(this);
         this.terrainNormalActuator = new IrisTerrainNormalActuator(this);
         this.terrainIslandActuator = new IrisTerrainIslandActuator(this);
         this.decorantActuator = new IrisDecorantActuator(this);
@@ -150,7 +146,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         cleaning = new AtomicBoolean(false);
         cleanLatch = new ChronoLatch(Math.max(10000, Math.min(IrisSettings.get().getParallax()
                 .getParallaxChunkEvictionMS(), IrisSettings.get().getParallax().getParallaxRegionEvictionMS())));
-
+        mantle = new IrisEngineMantle(this);
     }
 
     @Override
@@ -187,19 +183,17 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
     @Override
     public double getGeneratedPerSecond() {
-        if(perSecondLatch.flip())
-        {
+        if (perSecondLatch.flip()) {
             double g = generated.get() - generatedLast.get();
             generatedLast.set(generated.get());
 
-            if(g == 0)
-            {
+            if (g == 0) {
                 return 0;
             }
 
             long dur = M.ms() - lastGPS.get();
             lastGPS.set(M.ms());
-            perSecond.set(1000D / ((double)dur / g));
+            perSecond.set(g / ((double) (dur) / 1000D));
         }
 
         return perSecond.get();
@@ -236,7 +230,6 @@ public class IrisEngine extends BlockPopulator implements Engine {
         }
     }
 
-
     public void printMetrics(CommandSender sender) {
         KMap<String, Double> totals = new KMap<>();
         KMap<String, Double> weights = new KMap<>();
@@ -250,7 +243,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         }
 
         for (String j : timings.k()) {
-            weights.put(getName() + "."  + j, (wallClock / totalWeight) * timings.get(j));
+            weights.put(getName() + "." + j, (wallClock / totalWeight) * timings.get(j));
         }
 
         totals.put(getName(), wallClock);
@@ -292,7 +285,6 @@ public class IrisEngine extends BlockPopulator implements Engine {
         }
     }
 
-
     @Override
     public void close() {
         J.car(art);
@@ -300,7 +292,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
         getWorldManager().close();
         getTarget().close();
         saveEngineData();
-        getEngineParallax().close();
+        getMantle().close();
         getTerrainActuator().close();
         getDecorantActuator().close();
         getBiomeActuator().close();
@@ -328,18 +320,19 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
         cleaning.set(true);
 
-        try {
-            getParallax().cleanup();
-            getData().getObjectLoader().clean();
-        } catch (Throwable e) {
-            Iris.reportError(e);
-            Iris.error("Cleanup failed!");
-            e.printStackTrace();
-        }
+        J.a(() -> {
+            try {
+                getMantle().trim();
+                getData().getObjectLoader().clean();
+            } catch (Throwable e) {
+                Iris.reportError(e);
+                Iris.error("Cleanup failed!");
+                e.printStackTrace();
+            }
 
-        cleaning.lazySet(false);
+            cleaning.lazySet(false);
+        });
     }
-
 
     public EngineActuator<BlockData> getTerrainActuator() {
         return switch (getDimension().getTerrainMode()) {
@@ -371,14 +364,14 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
             switch (getDimension().getTerrainMode()) {
                 case NORMAL -> {
-                    getEngineParallax().generateParallaxArea(x >> 4, z >> 4);
+                    getMantle().generateMatter(x >> 4, z >> 4);
                     getTerrainActuator().actuate(x, z, vblocks, multicore);
                     getBiomeActuator().actuate(x, z, vbiomes, multicore);
                     getCaveModifier().modify(x, z, vblocks, multicore);
                     getRavineModifier().modify(x, z, vblocks, multicore);
                     getPostModifier().modify(x, z, vblocks, multicore);
                     getDecorantActuator().actuate(x, z, blocks, multicore);
-                    getEngineParallax().insertParallax(x >> 4, z >> 4, blocks);
+                    getMantle().insertMatter(x >> 4, z >> 4, BlockData.class, blocks);
                     getDepositModifier().modify(x, z, blocks, multicore);
                 }
                 case ISLANDS -> {
@@ -388,6 +381,7 @@ public class IrisEngine extends BlockPopulator implements Engine {
 
             getMetrics().getTotal().put(p.getMilliseconds());
             generated.incrementAndGet();
+            recycle();
         } catch (Throwable e) {
             Iris.reportError(e);
             fail("Failed to generate " + x + ", " + z, e);
