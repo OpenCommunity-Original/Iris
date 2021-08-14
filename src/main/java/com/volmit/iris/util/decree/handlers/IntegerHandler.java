@@ -20,8 +20,9 @@ package com.volmit.iris.util.decree.handlers;
 
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
-import com.volmit.iris.util.decree.DecreeParsingException;
-import net.kyori.adventure.text.minimessage.parser.ParsingException;
+import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
+import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.math.RNG;
 
 public class IntegerHandler implements DecreeParameterHandler<Integer> {
     @Override
@@ -50,5 +51,11 @@ public class IntegerHandler implements DecreeParameterHandler<Integer> {
     @Override
     public String toString(Integer f) {
         return f.toString();
+    }
+
+    @Override
+    public String getRandomDefault()
+    {
+        return RNG.r.i(0, 99) + "";
     }
 }

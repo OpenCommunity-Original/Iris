@@ -20,7 +20,8 @@ package com.volmit.iris.util.decree.handlers;
 
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
-import com.volmit.iris.util.decree.DecreeParsingException;
+import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
+import com.volmit.iris.util.math.RNG;
 
 public class ShortHandler implements DecreeParameterHandler<Short> {
     @Override
@@ -49,5 +50,11 @@ public class ShortHandler implements DecreeParameterHandler<Short> {
     @Override
     public String toString(Short f) {
         return f.toString();
+    }
+
+    @Override
+    public String getRandomDefault()
+    {
+        return RNG.r.i(0, 99) + "";
     }
 }

@@ -18,35 +18,53 @@
 
 package com.volmit.iris.util.decree.handlers;
 
+import com.volmit.iris.Iris;
+import com.volmit.iris.core.project.loader.IrisData;
+import com.volmit.iris.engine.object.regional.IrisRegion;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
+import java.io.File;
 
-public class PlayerHandler implements DecreeParameterHandler<Player> {
+public class RegionHandler implements DecreeParameterHandler<IrisRegion> {
     @Override
-    public KList<Player> getPossibilities() {
-        return new KList<>(new ArrayList<>(Bukkit.getOnlinePlayers()));
+    public KList<IrisRegion> getPossibilities() {
+        KMap<String, IrisRegion> p = new KMap<>();
+
+        //noinspection ConstantConditions
+        for(File i : Iris.instance.getDataFolder("packs").listFiles())
+        {
+            if(i.isDirectory()) {
+                IrisData data = new IrisData(i, true);
+                for (IrisRegion j : data.getRegionLoader().loadAll(data.getRegionLoader().getPossibleKeys()))
+                {
+                    p.putIfAbsent(j.getLoadKey(), j);
+                }
+
+                data.close();
+            }
+        }
+
+        return p.v();
     }
 
     @Override
-    public String toString(Player player) {
-        return player.getName();
+    public String toString(IrisRegion dim) {
+        return dim.getLoadKey();
     }
 
     @Override
-    public Player parse(String in) throws DecreeParsingException, DecreeWhichException {
+    public IrisRegion parse(String in) throws DecreeParsingException, DecreeWhichException {
         try
         {
-            KList<Player> options = getPossibilities(in);
+            KList<IrisRegion> options = getPossibilities(in);
 
             if(options.isEmpty())
             {
-                throw new DecreeParsingException("Unable to find Player \"" + in + "\"");
+                throw new DecreeParsingException("Unable to find Region \"" + in + "\"");
             }
 
             else if(options.size() > 1)
@@ -56,21 +74,23 @@ public class PlayerHandler implements DecreeParameterHandler<Player> {
 
             return options.get(0);
         }
-
+        catch(DecreeParsingException e){
+            throw e;
+        }
         catch(Throwable e)
         {
-            throw new DecreeParsingException("Unable to find Player \"" + in + "\" because of an uncaught exception: " + e);
+            throw new DecreeParsingException("Unable to find Region \"" + in + "\" because of an uncaught exception: " + e);
         }
     }
 
     @Override
     public boolean supports(Class<?> type) {
-        return type.equals(Player.class);
+        return type.equals(IrisRegion.class);
     }
 
     @Override
     public String getRandomDefault()
     {
-        return "playername";
+        return "region";
     }
 }

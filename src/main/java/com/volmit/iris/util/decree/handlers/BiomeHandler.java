@@ -18,35 +18,55 @@
 
 package com.volmit.iris.util.decree.handlers;
 
+import com.volmit.iris.Iris;
+import com.volmit.iris.core.project.loader.IrisData;
+import com.volmit.iris.engine.object.biome.IrisBiome;
+import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
+import com.volmit.iris.util.math.RNG;
 
-import java.util.ArrayList;
+import java.io.File;
 
-public class PlayerHandler implements DecreeParameterHandler<Player> {
+public class BiomeHandler implements DecreeParameterHandler<IrisBiome> {
     @Override
-    public KList<Player> getPossibilities() {
-        return new KList<>(new ArrayList<>(Bukkit.getOnlinePlayers()));
+    public KList<IrisBiome> getPossibilities() {
+        KMap<String, IrisBiome> p = new KMap<>();
+
+        //noinspection ConstantConditions
+        for(File i : Iris.instance.getDataFolder("packs").listFiles())
+        {
+            if(i.isDirectory()) {
+                IrisData data = new IrisData(i, true);
+                for (IrisBiome j : data.getBiomeLoader().loadAll(data.getBiomeLoader().getPossibleKeys()))
+                {
+                    p.putIfAbsent(j.getLoadKey(), j);
+                }
+
+                data.close();
+            }
+        }
+
+        return p.v();
     }
 
     @Override
-    public String toString(Player player) {
-        return player.getName();
+    public String toString(IrisBiome dim) {
+        return dim.getLoadKey();
     }
 
     @Override
-    public Player parse(String in) throws DecreeParsingException, DecreeWhichException {
+    public IrisBiome parse(String in) throws DecreeParsingException, DecreeWhichException {
         try
         {
-            KList<Player> options = getPossibilities(in);
+            KList<IrisBiome> options = getPossibilities(in);
 
             if(options.isEmpty())
             {
-                throw new DecreeParsingException("Unable to find Player \"" + in + "\"");
+                throw new DecreeParsingException("Unable to find Biome \"" + in + "\"");
             }
 
             else if(options.size() > 1)
@@ -56,21 +76,23 @@ public class PlayerHandler implements DecreeParameterHandler<Player> {
 
             return options.get(0);
         }
-
+        catch(DecreeParsingException e){
+            throw e;
+        }
         catch(Throwable e)
         {
-            throw new DecreeParsingException("Unable to find Player \"" + in + "\" because of an uncaught exception: " + e);
+            throw new DecreeParsingException("Unable to find Biome \"" + in + "\" because of an uncaught exception: " + e);
         }
     }
 
     @Override
     public boolean supports(Class<?> type) {
-        return type.equals(Player.class);
+        return type.equals(IrisBiome.class);
     }
 
     @Override
     public String getRandomDefault()
     {
-        return "playername";
+        return "biome";
     }
 }

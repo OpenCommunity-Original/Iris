@@ -21,40 +21,41 @@ package com.volmit.iris.util.decree.handlers;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
+import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
 
-public class LongHandler implements DecreeParameterHandler<Long> {
+public class BooleanHandler implements DecreeParameterHandler<Boolean> {
     @Override
-    public KList<Long> getPossibilities() {
+    public KList<Boolean> getPossibilities() {
         return null;
     }
 
     @Override
-    public Long parse(String in) throws DecreeParsingException {
+    public String toString(Boolean aByte) {
+        return aByte.toString();
+    }
+
+    @Override
+    public Boolean parse(String in) throws DecreeParsingException {
         try
         {
-            return Long.parseLong(in);
+            return Boolean.parseBoolean(in);
         }
 
         catch(Throwable e)
         {
-            throw new DecreeParsingException("Unable to parse long \"" + in + "\"");
+            throw new DecreeParsingException("Unable to parse boolean \"" + in + "\"");
         }
     }
 
     @Override
     public boolean supports(Class<?> type) {
-        return type.equals(Long.class) || type.equals(long.class);
-    }
-
-    @Override
-    public String toString(Long f) {
-        return f.toString();
+        return type.equals(Boolean.class) || type.equals(boolean.class);
     }
 
     @Override
     public String getRandomDefault()
     {
-        return RNG.r.i(0, 99) + "";
+        return M.r(0.5) + "";
     }
 }

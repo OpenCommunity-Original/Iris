@@ -18,15 +18,28 @@
 
 package com.volmit.iris.util.decree;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import com.volmit.iris.core.tools.IrisToolbelt;
+import com.volmit.iris.engine.framework.Engine;
+import com.volmit.iris.util.plugin.VolmitSender;
 
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.PARAMETER)
-public @interface Param {
-    String name();
-    String description() default "No Description Provided";
-    String[] aliases() default "";
+public interface DecreeExecutor {
+    default VolmitSender sender()
+    {
+        return DecreeContext.get();
+    }
+
+    default Engine engine()
+    {
+        if(sender().isPlayer())
+        {
+            return IrisToolbelt.access(sender().player().getWorld()).getEngine();
+        }
+
+        return null;
+    }
+
+    default <T> T get(T v, T ifUndefined)
+    {
+        return v == null ? ifUndefined : v;
+    }
 }

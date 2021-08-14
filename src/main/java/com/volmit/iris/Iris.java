@@ -38,6 +38,8 @@ import com.volmit.iris.engine.object.dimensional.IrisDimension;
 import com.volmit.iris.engine.platform.BukkitChunkGenerator;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KSet;
+import com.volmit.iris.util.decree.DecreeCommand;
+import com.volmit.iris.util.decree.DecreeSystem;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.function.NastyRunnable;
@@ -85,10 +87,11 @@ public class Iris extends VolmitPlugin implements Listener {
     public static ConversionManager convert;
     public static WandManager wand;
     public static EditManager edit;
-    public static IrisBoardManager board;
+    public static BoardManager board;
     public static MultiverseCoreLink linkMultiverseCore;
     public static OraxenLink linkOraxen;
     public static MythicMobsLink linkMythicMobs;
+    public static CommandManager commandManager;
     public static TreeManager saplingManager;
     private static final Queue<Runnable> syncJobs = new ShurikenQueue<>();
     public static IrisCompat compat;
@@ -121,13 +124,14 @@ public class Iris extends VolmitPlugin implements Listener {
         proj = new ProjectManager();
         convert = new ConversionManager();
         wand = new WandManager();
-        board = new IrisBoardManager();
+        board = new BoardManager();
         linkMultiverseCore = new MultiverseCoreLink();
         linkOraxen = new OraxenLink();
         linkMythicMobs = new MythicMobsLink();
         saplingManager = new TreeManager();
         edit = new EditManager();
         configWatcher = new FileWatcher(getDataFile("settings.json"));
+        commandManager = new CommandManager();
         getServer().getPluginManager().registerEvents(new CommandLocate(), this);
         getServer().getPluginManager().registerEvents(new WandManager(), this);
         getServer().getPluginManager().registerEvents(new DolphinManager(), this);
@@ -717,7 +721,7 @@ public class Iris extends VolmitPlugin implements Listener {
     static {
         try {
             InstanceState.updateInstanceId();
-        } catch (Throwable e) {
+        } catch (Throwable ignored) {
 
         }
     }

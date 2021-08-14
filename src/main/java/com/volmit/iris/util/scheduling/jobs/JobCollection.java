@@ -16,45 +16,55 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.util.decree.handlers;
+package com.volmit.iris.util.scheduling.jobs;
 
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.decree.DecreeParameterHandler;
-import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
-import com.volmit.iris.util.math.RNG;
 
-public class LongHandler implements DecreeParameterHandler<Long> {
-    @Override
-    public KList<Long> getPossibilities() {
-        return null;
-    }
+public class JobCollection implements Job {
+    private final String name;
+    private String status;
+    private final KList<Job> jobs;
 
-    @Override
-    public Long parse(String in) throws DecreeParsingException {
-        try
-        {
-            return Long.parseLong(in);
-        }
-
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to parse long \"" + in + "\"");
-        }
-    }
-
-    @Override
-    public boolean supports(Class<?> type) {
-        return type.equals(Long.class) || type.equals(long.class);
-    }
-
-    @Override
-    public String toString(Long f) {
-        return f.toString();
-    }
-
-    @Override
-    public String getRandomDefault()
+    public JobCollection(String name, Job... jobs)
     {
-        return RNG.r.i(0, 99) + "";
+        this(name, new KList<>(jobs));
+    }
+
+    public JobCollection(String name, KList<Job> jobs)
+    {
+        this.name = name;
+        status = null;
+        this.jobs = new KList<>(jobs);
+    }
+
+    @Override
+    public String getName() {
+        return status == null ? name : (name + " 》" + status);
+    }
+
+    @Override
+    public void execute() {
+        for(Job i : jobs)
+        {
+            status = i.getName();
+            i.execute();
+        }
+
+        status = null;
+    }
+
+    @Override
+    public void completeWork() {
+
+    }
+
+    @Override
+    public int getTotalWork() {
+        return jobs.stream().mapToInt(Job::getTotalWork).sum();
+    }
+
+    @Override
+    public int getWorkCompleted() {
+        return jobs.stream().mapToInt(Job::getWorkCompleted).sum();
     }
 }

@@ -16,28 +16,43 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.util.decree;
+package com.volmit.iris.util.scheduling.jobs;
 
-import org.bukkit.entity.Player;
+public class SingleJob implements Job{
+    private boolean done;
+    private final String name;
+    private final Runnable runnable;
 
-public class EXAMPLE
-{
-    @Decree
-    public void kick(
-            @Param(name = "player", description = "The Player to kick from the server", aliases = "p")
-                    Player player,
-            @Param(name = "reason", description = "A reason to kick the player for", aliases = "r")
-                    String reason)
+    public SingleJob(String name, Runnable runnable)
     {
-        player.kickPlayer(reason);
-        DecreeContext.get().sendMessage("Kicked " + player.getName());
+        this.name = name;
+        done = false;
+        this.runnable = runnable;
     }
 
-    @Decree
-    public void kick(
-            @Param(name = "player", description = "The Player to kick from the server", aliases = "p")
-                    Player player)
-    {
-        kick(player, "No Reason!");
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public void execute() {
+        runnable.run();
+        completeWork();
+    }
+
+    @Override
+    public void completeWork() {
+        done = true;
+    }
+
+    @Override
+    public int getTotalWork() {
+        return 1;
+    }
+
+    @Override
+    public int getWorkCompleted() {
+        return done ? 1 : 0;
     }
 }

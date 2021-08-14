@@ -16,45 +16,58 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.util.decree.handlers;
+package com.volmit.iris.util.scheduling.jobs;
 
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.decree.DecreeParameterHandler;
-import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
-import com.volmit.iris.util.math.RNG;
 
-public class LongHandler implements DecreeParameterHandler<Long> {
-    @Override
-    public KList<Long> getPossibilities() {
-        return null;
-    }
+public abstract class QueueJob<T> implements Job {
+    private final KList<T> queue;
+    private int totalWork;
+    private int completed;
 
-    @Override
-    public Long parse(String in) throws DecreeParsingException {
-        try
-        {
-            return Long.parseLong(in);
-        }
-
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to parse long \"" + in + "\"");
-        }
-    }
-
-    @Override
-    public boolean supports(Class<?> type) {
-        return type.equals(Long.class) || type.equals(long.class);
-    }
-
-    @Override
-    public String toString(Long f) {
-        return f.toString();
-    }
-
-    @Override
-    public String getRandomDefault()
+    public QueueJob()
     {
-        return RNG.r.i(0, 99) + "";
+        totalWork = 0;
+        completed = 0;
+        queue = new KList<>();
+    }
+
+    public void queue(T t)
+    {
+        queue.add(t);
+        totalWork++;
+    }
+
+    public void queue(KList<T> f)
+    {
+        queue.addAll(f);
+        totalWork += f.size();
+    }
+
+    public abstract void execute(T t);
+
+    @Override
+    public void execute() {
+        totalWork = queue.size();
+        while(queue.isNotEmpty())
+        {
+            execute(queue.pop());
+            completeWork();
+        }
+    }
+
+    @Override
+    public void completeWork() {
+        completed++;
+    }
+
+    @Override
+    public int getTotalWork() {
+        return totalWork;
+    }
+
+    @Override
+    public int getWorkCompleted() {
+        return completed;
     }
 }

@@ -20,9 +20,12 @@ package com.volmit.iris.util.plugin;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.decree.virtual.VirtualDecreeCommand;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.math.M;
+import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.scheduling.J;
 import lombok.Getter;
 import lombok.Setter;
@@ -258,6 +261,11 @@ public class VolmitSender implements CommandSender {
         return MiniMessage.get().parse(a);
     }
 
+    private Component createComponentRaw(String message) {
+        String t = C.translateAlternateColorCodes('&', getTag() + message);
+        return MiniMessage.get().parse(t);
+    }
+
     public <T> void showWaiting(String passive, CompletableFuture<T> f) {
         AtomicInteger v = new AtomicInteger();
         AtomicReference<T> g = new AtomicReference<>();
@@ -300,6 +308,24 @@ public class VolmitSender implements CommandSender {
         }
     }
 
+
+    public void sendMessageRaw(String message) {
+        if (message.contains("<NOMINI>")) {
+            s.sendMessage(message.replaceAll("\\Q<NOMINI>\\E", ""));
+            return;
+        }
+
+        try {
+            Iris.audiences.sender(s).sendMessage(createComponentRaw(message));
+        } catch (Throwable e) {
+            String t = C.translateAlternateColorCodes('&', getTag() + message);
+            String a = C.aura(t, IrisSettings.get().getGeneral().getSpinh(), IrisSettings.get().getGeneral().getSpins(), IrisSettings.get().getGeneral().getSpinb());
+
+            Iris.debug("<NOMINI>Failure to parse " + a);
+            s.sendMessage(C.translateAlternateColorCodes('&', getTag() + message));
+        }
+    }
+
     @Override
     public void sendMessage(String[] messages) {
         for (String str : messages)
@@ -332,5 +358,131 @@ public class VolmitSender implements CommandSender {
     @Override
     public Spigot spigot() {
         return s.spigot();
+    }
+
+    private String pickRandoms(int max, VirtualDecreeCommand i)
+    {
+        KList<String> m = new KList<>();
+        for(int ix = 0; ix < max; ix++)
+        {
+            m.add((i.isNode()
+                    ? (i.getNode().getParameters().isNotEmpty())
+                    ? "<#aebef2>✦ <#5ef288>"
+                    + i.getParentPath()
+                    + " <#42ecf5>"
+                    + i.getName() + " "
+                    + i.getNode().getParameters().shuffleCopy(RNG.r).convert((f)
+                            -> (f.isRequired() || RNG.r.b(0.5)
+                            ? "<#f2e15e>" + f.getNames().getRandom() + "="
+                            + "<#d665f0>" + f.example()
+                            : ""))
+                    .toString(" ")
+                    : ""
+                    : ""));
+        }
+
+        return m.removeDuplicates().convert((iff) -> iff.replaceAll("\\Q  \\E", " ")).toString("\n");
+    }
+
+
+    public void sendHeader(String name, int overrideLength)
+    {
+        int len = overrideLength;
+        int h = name.length() + 2;
+        String s = Form.repeat(" ", len - h - 4);
+        String si = Form.repeat("(", 3);
+        String so = Form.repeat(")", 3);
+        String sf = "[";
+        String se = "]";
+
+        if(name.trim().isEmpty())
+        {
+            sendMessageRaw("<font:minecraft:uniform><strikethrough><gradient:#34eb6b:#32bfad>" + sf + s + "<reset><font:minecraft:uniform><strikethrough><gradient:#32bfad:#34eb6b>"  + s + se);
+        }
+
+        else
+        {
+            sendMessageRaw("<font:minecraft:uniform><strikethrough><gradient:#34eb6b:#32bfad>" + sf + s + si + "<reset> <gradient:#3299bf:#323bbf>" + name + "<reset> <font:minecraft:uniform><strikethrough><gradient:#32bfad:#34eb6b>" + so + s + se);
+        }
+    }
+
+    public void sendHeader(String name)
+    {
+        sendHeader(name,46);
+    }
+
+    public void sendDecreeHelp(VirtualDecreeCommand v) {
+        int m = v.getNodes().size();
+
+        if(v.getNodes().isNotEmpty())
+        {
+            sendHeader(Form.capitalize(v.getName()) + " Help");
+            if(isPlayer() && v.getParent() != null)
+            {
+                sendMessageRaw("<hover:show_text:'"+"<#b54b38>Click to go back to <#3299bf>" + Form.capitalize(v.getParent().getName()) + " Help" +"'><click:run_command:" + v.getParent().getPath() + "><font:minecraft:uniform><#f58571>〈 Back</click></hover>");
+            }
+
+            for(VirtualDecreeCommand i : v.getNodes())
+            {
+                if(isPlayer())
+                {
+                    //@builder
+                    String s = (
+                        "<hover:show_text:'"+
+                        i.getNames().copy().reverse().convert((f) -> "<#42ecf5>" + f).toString(", ") + "\n"
+                        + "<#3fe05a>✎ <#6ad97d><font:minecraft:uniform>" + i.getDescription() + "<reset>\n"
+                        + "<#bbe03f>✒ <#a8e0a2>" + (i.isNode()
+                            ? ((i.getNode().getParameters().isEmpty()
+                                ? "<font:minecraft:uniform>There are no parameters.<reset>"
+                                : "<font:minecraft:uniform>Hover over all of the parameters to learn more.<reset>") + "\n")
+                            : "<font:minecraft:uniform>This is a command category. Run <reset><#98eda5>" + i.getPath())
+                        + (i.isNode()
+                            ? (i.getNode().getParameters().isNotEmpty())
+                                ? "<#aebef2>✦ <#5ef288><font:minecraft:uniform>"
+                                    + i.getParentPath()
+                                    + " <#42ecf5>"
+                                    + i.getName() + " "
+                                    + i.getNode().getParameters().convert((f)
+                                        -> "<#d665f0>" + f.example())
+                                            .toString(" ") + "\n"
+                            : ""
+                        : "")
+                        + (i.isNode() ? "<font:minecraft:uniform>" + pickRandoms(Math.min(i.getNode().getParameters().size() + 1, 5), i) + "<reset>" : "")
+                        + "'><click:" + (i.isNode() ? "suggest_command" : "run_command") + ":" + i.getPath() + " >"
+                        + "<#46826a>⇀<gradient:#42ecf5:#428df5> " +i.getName() + "</click></hover>"
+                            + (i.isNode() ?
+                                " " + i.getNode().getParameters().convert((f)
+                                    -> "<hover:show_text:'"
+                                        + f.getNames().convert((ff) -> "<#d665f0>" + ff).toString(", ") + "\n"
+                                            + "<#3fe05a>✎ <#6ad97d><font:minecraft:uniform>" + f.getDescription() + "<reset>\n"
+                                        + (f.isRequired()
+                                            ? "<#db4321>⚠ <#faa796><font:minecraft:uniform>This parameter is required."
+                                            : (f.hasDefault()
+                                                ? "<#2181db>✔ <#78dcf0><font:minecraft:uniform>Defaults to \""+f.getParam().defaultValue()+"\" if undefined."
+                                                : "<#a73abd>✔ <#78dcf0><font:minecraft:uniform>This parameter is optional."))
+                                    + "'>"
+                                        + (f.isRequired() ? "<red>[" : "")
+                                        + "<gradient:#d665f0:#a37feb>" + f.getName()
+                                        + (f.isRequired() ? "<red>]<gray>" : "")
+                                    + "</hover>").toString(" ")
+                                : "<gradient:#afe3d3:#a2dae0> - Category of Commands"
+                                )
+                            );
+                    //@done
+                    sendMessageRaw(s);
+                    System.out.println(s);
+                }
+
+                else
+                {
+                    sendMessage(i.getPath() + "()");
+                }
+            }
+        }
+
+        else
+        {
+            sendMessage(C.RED + "There are no subcommands in this group! Contact support, this is a command design issue!");
+        }
     }
 }

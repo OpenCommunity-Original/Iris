@@ -16,10 +16,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.util.decree;
+package com.volmit.iris.core.decrees;
 
-public class DecreeWhichException extends Exception{
-    public DecreeWhichException() {
-        super();
+import com.volmit.iris.util.decree.DecreeExecutor;
+import com.volmit.iris.util.decree.annotations.Decree;
+import com.volmit.iris.util.decree.annotations.Param;
+
+@Decree(name = "irisd", aliases = {"ird"}, description = "Basic Command")
+public class CMDIris implements DecreeExecutor
+{
+    private CMDIrisStudio studio;
+
+    @Decree(description = "Ping self", aliases = "p")
+    public void ping(
+            @Param(name = "message",defaultValue = "Pong", aliases = {"msg", "m"})
+            String message)
+    {
+        sender().sendMessage(message + "!");
     }
 }
