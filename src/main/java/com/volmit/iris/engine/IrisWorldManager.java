@@ -22,20 +22,15 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.EngineAssignedWorldManager;
-import com.volmit.iris.engine.object.biome.IrisBiome;
-import com.volmit.iris.engine.object.block.IrisBlockDrops;
-import com.volmit.iris.engine.object.common.IRare;
-import com.volmit.iris.engine.object.engine.IrisEngineChunkData;
-import com.volmit.iris.engine.object.engine.IrisEngineData;
-import com.volmit.iris.engine.object.engine.IrisEngineSpawnerCooldown;
-import com.volmit.iris.engine.object.entity.IrisEntitySpawn;
-import com.volmit.iris.engine.object.regional.IrisRegion;
-import com.volmit.iris.engine.object.spawners.IrisSpawner;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.mantle.Mantle;
+import com.volmit.iris.util.mantle.MantleFlag;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.plugin.Chunks;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.Looper;
@@ -44,6 +39,7 @@ import lombok.EqualsAndHashCode;
 import org.bukkit.Chunk;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.inventory.ItemStack;
@@ -57,12 +53,16 @@ import java.util.stream.Stream;
 @Data
 public class IrisWorldManager extends EngineAssignedWorldManager {
     private final Looper looper;
+    private final int id;
     private final KMap<Long, Long> chunkCooldowns;
+    private final KList<Runnable> updateQueue = new KList<>();
     private double energy = 25;
     private int entityCount = 0;
     private final ChronoLatch cl;
+    private final ChronoLatch clw;
     private final ChronoLatch ecl;
     private final ChronoLatch cln;
+    private final ChronoLatch chunkUpdater;
     private long charge = 0;
     private int actuallySpawned = 0;
     private int cooldown = 0;
@@ -73,66 +73,97 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
         cl = null;
         ecl = null;
         cln = null;
+        clw = null;
         chunkCooldowns = null;
         looper = null;
+        chunkUpdater = null;
+        id = -1;
     }
 
     public IrisWorldManager(Engine engine) {
         super(engine);
+        chunkUpdater = new ChronoLatch(1000);
         cln = new ChronoLatch(60000);
         cl = new ChronoLatch(3000);
         ecl = new ChronoLatch(250);
+        clw = new ChronoLatch(1000, true);
         chunkCooldowns = new KMap<>();
+        id = engine.getCacheID();
         energy = 25;
         looper = new Looper() {
             @Override
             protected long loop() {
-                if (getEngine().isClosed()) {
+                if (getEngine().isClosed() || getEngine().getCacheID() != id) {
                     interrupt();
                 }
 
-                if (getDimension().isInfiniteEnergy()) {
-                    energy += 1000;
-                    fixEnergy();
+                if (!getEngine().getWorld().hasRealWorld() && clw.flip()) {
+                    getEngine().getWorld().tryGetRealWorld();
                 }
 
-                if (M.ms() < charge) {
-                    energy += 70;
-                    fixEnergy();
-                }
+                if (getEngine().getWorld().hasRealWorld()) {
+                    if (chunkUpdater.flip()) {
+                        updateChunks();
+                    }
 
-                if (cln.flip()) {
-                    engine.getEngineData().cleanup(getEngine());
-                }
+                    if (getDimension().isInfiniteEnergy()) {
+                        energy += 1000;
+                        fixEnergy();
+                    }
 
-                if (precount != null) {
-                    entityCount = 0;
-                    for (Entity i : precount) {
-                        if (i instanceof LivingEntity) {
-                            if (!i.isDead()) {
-                                entityCount++;
+                    if (M.ms() < charge) {
+                        energy += 70;
+                        fixEnergy();
+                    }
+
+                    if (cln.flip()) {
+                        engine.getEngineData().cleanup(getEngine());
+                    }
+
+                    if (precount != null) {
+                        entityCount = 0;
+                        for (Entity i : precount) {
+                            if (i instanceof LivingEntity) {
+                                if (!i.isDead()) {
+                                    entityCount++;
+                                }
                             }
+                        }
+
+                        precount = null;
+                    }
+
+                    if (energy < 650) {
+                        if (ecl.flip()) {
+                            energy *= 1 + (0.02 * M.clip((1D - getEntitySaturation()), 0D, 1D));
+                            fixEnergy();
                         }
                     }
 
-                    precount = null;
+                    onAsyncTick();
                 }
 
-                if (energy < 650) {
-                    if (ecl.flip()) {
-                        energy *= 1 + (0.02 * M.clip((1D - getEntitySaturation()), 0D, 1D));
-                        fixEnergy();
-                    }
-                }
-
-                onAsyncTick();
-
-                return 50;
+                return 250;
             }
         };
         looper.setPriority(Thread.MIN_PRIORITY);
         looper.setName("Iris World Manager");
         looper.start();
+    }
+
+    private void updateChunks() {
+        for (Player i : getEngine().getWorld().realWorld().getPlayers()) {
+            int r = 2;
+
+            Chunk c = i.getLocation().getChunk();
+            for (int x = -r; x <= r; x++) {
+                for (int z = -r; z <= r; z++) {
+                    if (c.getWorld().isChunkLoaded(c.getX() + x, c.getZ() + z)) {
+                        getEngine().updateChunk(c.getWorld().getChunkAt(c.getX() + x, c.getZ() + z));
+                    }
+                }
+            }
+        }
     }
 
     private boolean onAsyncTick() {
@@ -186,9 +217,12 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
             }
 
             Chunk c = cc[RNG.r.nextInt(cc.length)];
-            IrisBiome biome = getEngine().getSurfaceBiome(c);
-            IrisRegion region = getEngine().getRegion(c);
-            spawnIn(c, biome, region);
+
+            if (!c.isLoaded() || !Chunks.isSafe(c.getWorld(), c.getX(), c.getZ())) {
+                continue;
+            }
+
+            spawnIn(c, false);
             chunkCooldowns.put(Cache.key(c), M.ms());
         }
 
@@ -200,26 +234,33 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
         energy = M.clip(energy, 1D, 1000D);
     }
 
-    private void spawnIn(Chunk c, IrisBiome biome, IrisRegion region) {
+    private void spawnIn(Chunk c, boolean initial) {
+        if (initial) {
+            energy += 1.2;
+        }
+
+        IrisBiome biome = getEngine().getSurfaceBiome(c);
+        IrisRegion region = getEngine().getRegion(c);
         //@builder
         IrisEntitySpawn v = spawnRandomly(Stream.concat(Stream.concat(
                                         getData().getSpawnerLoader()
                                                 .loadAll(getDimension().getEntitySpawners())
-                                                .shuffleCopy(RNG.r).stream().filter(this::canSpawn),
+                                                .shuffleCopy(RNG.r).stream()
+                                                .filter(this::canSpawn),
                                         getData().getSpawnerLoader().streamAll(getEngine().getMantle()
-                                                        .getFeaturesInChunk(c).stream()
+                                                        .forEachFeature(c).stream()
                                                         .flatMap((o) -> o.getFeature().getEntitySpawners().stream()))
                                                 .filter(this::canSpawn))
                                 .filter((i) -> i.isValid(biome))
-                                .flatMap(this::stream),
+                                .flatMap((i) -> stream(i, initial)),
                         Stream.concat(getData().getSpawnerLoader()
                                         .loadAll(getEngine().getRegion(c.getX() << 4, c.getZ() << 4).getEntitySpawners())
                                         .shuffleCopy(RNG.r).stream().filter(this::canSpawn)
-                                        .flatMap(this::stream),
+                                        .flatMap((i) -> stream(i, initial)),
                                 getData().getSpawnerLoader()
                                         .loadAll(getEngine().getSurfaceBiome(c.getX() << 4, c.getZ() << 4).getEntitySpawners())
                                         .shuffleCopy(RNG.r).stream().filter(this::canSpawn)
-                                        .flatMap(this::stream)))
+                                        .flatMap((i) -> stream(i, initial))))
                 .collect(Collectors.toList()))
                 .popRandom(RNG.r);
 
@@ -279,17 +320,18 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
         }
     }
 
-    private Stream<IrisEntitySpawn> stream(IrisSpawner s) {
-        for (IrisEntitySpawn i : s.getSpawns()) {
+    private Stream<IrisEntitySpawn> stream(IrisSpawner s, boolean initial) {
+        for (IrisEntitySpawn i : initial ? s.getInitialSpawns() : s.getSpawns()) {
             i.setReferenceSpawner(s);
         }
 
-        return s.getSpawns().stream();
+        return (initial ? s.getInitialSpawns() : s.getSpawns()).stream();
     }
 
     private KList<IrisEntitySpawn> spawnRandomly(List<IrisEntitySpawn> types) {
         KList<IrisEntitySpawn> rarityTypes = new KList<>();
         int totalRarity = 0;
+
         for (IrisEntitySpawn i : types) {
             totalRarity += IRare.get(i);
         }
@@ -338,13 +380,17 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
 
     @Override
     public void onChunkLoad(Chunk e, boolean generated) {
-        if (generated) {
-            energy += 1.2;
-        } else {
-            energy += 0.3;
-        }
-
+        J.a(() -> getMantle().raiseFlag(e.getX(), e.getZ(), MantleFlag.INITIAL_SPAWNED,
+                () -> J.a(() -> spawnIn(e, true), RNG.r.i(5, 200))));
+        energy += 0.3;
         fixEnergy();
+        if (!getMantle().hasFlag(e.getX(), e.getZ(), MantleFlag.UPDATE)) {
+            J.a(() -> getEngine().updateChunk(e), 20);
+        }
+    }
+
+    public Mantle getMantle() {
+        return getEngine().getMantle().getMantle();
     }
 
     @Override
@@ -359,36 +405,14 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
             Runnable drop = () -> J.s(() -> d.forEach((i) -> e.getBlock().getWorld().dropItemNaturally(e.getBlock().getLocation().clone().add(0.5, 0.5, 0.5), i)));
             IrisBiome b = getEngine().getBiome(e.getBlock().getLocation());
 
-            for (IrisBlockDrops i : b.getBlockDrops()) {
-                if (i.shouldDropFor(e.getBlock().getBlockData(), getData())) {
-                    if (i.isReplaceVanillaDrops()) {
-                        e.setDropItems(false);
-                    }
-
-                    i.fillDrops(false, d);
-
-                    if (i.isSkipParents()) {
-                        drop.run();
-                        return;
-                    }
-                }
+            if (dropItems(e, d, drop, b.getBlockDrops(), b)) {
+                return;
             }
 
             IrisRegion r = getEngine().getRegion(e.getBlock().getLocation());
 
-            for (IrisBlockDrops i : r.getBlockDrops()) {
-                if (i.shouldDropFor(e.getBlock().getBlockData(), getData())) {
-                    if (i.isReplaceVanillaDrops()) {
-                        e.setDropItems(false);
-                    }
-
-                    i.fillDrops(false, d);
-
-                    if (i.isSkipParents()) {
-                        drop.run();
-                        return;
-                    }
-                }
+            if (dropItems(e, d, drop, r.getBlockDrops(), b)) {
+                return;
             }
 
             for (IrisBlockDrops i : getEngine().getDimension().getBlockDrops()) {
@@ -406,6 +430,24 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
                 }
             }
         }
+    }
+
+    private boolean dropItems(BlockBreakEvent e, KList<ItemStack> d, Runnable drop, KList<IrisBlockDrops> blockDrops, IrisBiome b) {
+        for (IrisBlockDrops i : blockDrops) {
+            if (i.shouldDropFor(e.getBlock().getBlockData(), getData())) {
+                if (i.isReplaceVanillaDrops()) {
+                    e.setDropItems(false);
+                }
+
+                i.fillDrops(false, d);
+
+                if (i.isSkipParents()) {
+                    drop.run();
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override

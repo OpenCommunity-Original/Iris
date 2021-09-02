@@ -19,17 +19,16 @@
 package com.volmit.iris.util.decree.handlers;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.object.dimensional.IrisDimension;
+import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.object.IrisDimension;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
-import org.bukkit.Bukkit;
-import org.bukkit.World;
 
 import java.io.File;
+import java.util.stream.Collectors;
 
 public class DimensionHandler implements DecreeParameterHandler<IrisDimension> {
     @Override
@@ -37,12 +36,10 @@ public class DimensionHandler implements DecreeParameterHandler<IrisDimension> {
         KMap<String, IrisDimension> p = new KMap<>();
 
         //noinspection ConstantConditions
-        for(File i : Iris.instance.getDataFolder("packs").listFiles())
-        {
-            if(i.isDirectory()) {
-                IrisData data = new IrisData(i, true);
-                for (IrisDimension j : data.getDimensionLoader().loadAll(data.getDimensionLoader().getPossibleKeys()))
-                {
+        for (File i : Iris.instance.getDataFolder("packs").listFiles()) {
+            if (i.isDirectory()) {
+                IrisData data = IrisData.get(i);
+                for (IrisDimension j : data.getDimensionLoader().loadAll(data.getDimensionLoader().getPossibleKeys())) {
                     p.putIfAbsent(j.getLoadKey(), j);
                 }
 
@@ -59,30 +56,24 @@ public class DimensionHandler implements DecreeParameterHandler<IrisDimension> {
     }
 
     @Override
-    public IrisDimension parse(String in) throws DecreeParsingException, DecreeWhichException {
-        try
-        {
-            KList<IrisDimension> options = getPossibilities(in);
+    public IrisDimension parse(String in, boolean force) throws DecreeParsingException, DecreeWhichException {
+        KList<IrisDimension> options = getPossibilities(in);
 
-            if(options.isEmpty())
-            {
-                throw new DecreeParsingException("Unable to find Dimension \"" + in + "\"");
-            }
-
-            else if(options.size() > 1)
-            {
+        if (options.isEmpty()) {
+            throw new DecreeParsingException("Unable to find Dimension \"" + in + "\"");
+        } else if (options.size() > 1) {
+            if (force) {
+                try {
+                    return options.stream().filter((i) -> toString(i).equalsIgnoreCase(in)).collect(Collectors.toList()).get(0);
+                } catch (Throwable e) {
+                    throw new DecreeParsingException("Unable to filter which Biome \"" + in + "\"");
+                }
+            } else {
                 throw new DecreeWhichException();
             }
+        }
 
-            return options.get(0);
-        }
-        catch(DecreeParsingException e){
-            throw e;
-        }
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to find Dimension \"" + in + "\" because of an uncaught exception: " + e);
-        }
+        return options.get(0);
     }
 
     @Override
@@ -91,8 +82,7 @@ public class DimensionHandler implements DecreeParameterHandler<IrisDimension> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return "dimension";
     }
 }

@@ -18,7 +18,10 @@
 
 package com.volmit.iris.core.nms.v1X;
 
+import com.volmit.iris.Iris;
 import com.volmit.iris.core.nms.INMSBinding;
+import com.volmit.iris.util.nbt.mca.palette.BiomeContainer;
+import com.volmit.iris.util.nbt.mca.palette.PaletteAccess;
 import com.volmit.iris.util.nbt.tag.CompoundTag;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -134,6 +137,20 @@ public class NMSBinding1X implements INMSBinding {
     }
 
     @Override
+    public BiomeContainer newBiomeContainer(int min, int max) {
+        Iris.error("Cannot use the custom biome data! Iris is incapable of using MCA generation on this version of minecraft!");
+
+        return null;
+    }
+
+    @Override
+    public BiomeContainer newBiomeContainer(int min, int max, int[] v) {
+        Iris.error("Cannot use the custom biome data! Iris is incapable of using MCA generation on this version of minecraft!");
+
+        return null;
+    }
+
+    @Override
     public int countCustomBiomes() {
         return 0;
     }
@@ -141,5 +158,11 @@ public class NMSBinding1X implements INMSBinding {
     @Override
     public void forceBiomeInto(int x, int y, int z, Object somethingVeryDirty, ChunkGenerator.BiomeGrid chunk) {
 
+    }
+
+    @Override
+    public PaletteAccess createPalette() {
+        Iris.error("Cannot use the global data palette! Iris is incapable of using MCA generation on this version of minecraft!");
+        return null;
     }
 }

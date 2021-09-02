@@ -20,28 +20,29 @@ package com.volmit.iris.util.scheduling.jobs;
 
 import com.volmit.iris.util.collection.KList;
 
-public abstract class QueueJob<T> implements Job {
-    private final KList<T> queue;
-    private int totalWork;
-    private int completed;
+import java.util.concurrent.atomic.AtomicInteger;
 
-    public QueueJob()
-    {
+public abstract class QueueJob<T> implements Job {
+    final KList<T> queue;
+    protected int totalWork;
+    private final AtomicInteger completed;
+
+    public QueueJob() {
         totalWork = 0;
-        completed = 0;
+        completed = new AtomicInteger(0);
         queue = new KList<>();
     }
 
-    public void queue(T t)
-    {
+    public QueueJob queue(T t) {
         queue.add(t);
         totalWork++;
+        return this;
     }
 
-    public void queue(KList<T> f)
-    {
+    public QueueJob queue(KList<T> f) {
         queue.addAll(f);
         totalWork += f.size();
+        return this;
     }
 
     public abstract void execute(T t);
@@ -49,8 +50,7 @@ public abstract class QueueJob<T> implements Job {
     @Override
     public void execute() {
         totalWork = queue.size();
-        while(queue.isNotEmpty())
-        {
+        while (queue.isNotEmpty()) {
             execute(queue.pop());
             completeWork();
         }
@@ -58,7 +58,7 @@ public abstract class QueueJob<T> implements Job {
 
     @Override
     public void completeWork() {
-        completed++;
+        completed.incrementAndGet();
     }
 
     @Override
@@ -68,6 +68,6 @@ public abstract class QueueJob<T> implements Job {
 
     @Override
     public int getWorkCompleted() {
-        return completed;
+        return completed.get();
     }
 }

@@ -23,6 +23,8 @@ import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.math.RNG;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 public class ShortHandler implements DecreeParameterHandler<Short> {
     @Override
     public KList<Short> getPossibilities() {
@@ -30,14 +32,12 @@ public class ShortHandler implements DecreeParameterHandler<Short> {
     }
 
     @Override
-    public Short parse(String in) throws DecreeParsingException {
-        try
-        {
-            return Short.parseShort(in);
-        }
-
-        catch(Throwable e)
-        {
+    public Short parse(String in, boolean force) throws DecreeParsingException {
+        try {
+            AtomicReference<String> r = new AtomicReference<>(in);
+            double m = getMultiplier(r);
+            return (short) (Short.valueOf(r.get()).doubleValue() * m);
+        } catch (Throwable e) {
             throw new DecreeParsingException("Unable to parse short \"" + in + "\"");
         }
     }
@@ -53,8 +53,7 @@ public class ShortHandler implements DecreeParameterHandler<Short> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return RNG.r.i(0, 99) + "";
     }
 }

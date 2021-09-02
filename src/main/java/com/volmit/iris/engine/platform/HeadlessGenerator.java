@@ -19,19 +19,22 @@
 package com.volmit.iris.engine.platform;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.nms.INMS;
 import com.volmit.iris.core.pregenerator.PregenListener;
 import com.volmit.iris.core.pregenerator.PregenTask;
+import com.volmit.iris.engine.IrisEngine;
 import com.volmit.iris.engine.data.chunk.MCATerrainChunk;
 import com.volmit.iris.engine.data.chunk.TerrainChunk;
 import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.common.HeadlessWorld;
+import com.volmit.iris.engine.framework.EngineTarget;
+import com.volmit.iris.engine.object.HeadlessWorld;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.documentation.RegionCoordinates;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.math.Position2;
+import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.nbt.mca.MCAFile;
 import com.volmit.iris.util.nbt.mca.MCAUtil;
 import com.volmit.iris.util.nbt.mca.NBTWorld;
 import com.volmit.iris.util.nbt.tag.CompoundTag;
@@ -39,11 +42,13 @@ import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.MultiBurst;
 import lombok.Data;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.generator.ChunkGenerator;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.function.Consumer;
 
 @Data
 public class HeadlessGenerator implements PlatformChunkGenerator {
@@ -52,24 +57,26 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
     private final HeadlessWorld world;
     private final NBTWorld writer;
     private final MultiBurst burst;
-    private final EngineProvider provider;
+    private final Engine engine;
+    private final long rkey = RNG.r.lmax();
 
     public HeadlessGenerator(HeadlessWorld world) {
+        this(world, new IrisEngine(new EngineTarget(world.getWorld(), world.getDimension(), world.getDimension().getLoader()), world.isStudio()));
+    }
+
+    public HeadlessGenerator(HeadlessWorld world, Engine engine) {
+        this.engine = engine;
         this.world = world;
-        burst = new MultiBurst("Iris Headless Generator", 9, IrisSettings.getThreadCount(IrisSettings.get().getConcurrency().getPregenThreadCount()));
+        burst = MultiBurst.burst;
         writer = new NBTWorld(world.getWorld().worldFolder());
-        provider = new EngineProvider();
-        provider.provideEngine(world.getWorld(), world.getDimension().getLoadKey(), world.getDimension().getLoader().getDataFolder(), isStudio(), (e) -> {
-        });
     }
 
     @ChunkCoordinates
-    public void generateChunk(int x, int z) {
+    public void generateChunk(MCAFile file, int x, int z) {
         try {
             int ox = x << 4;
             int oz = z << 4;
-            com.volmit.iris.util.nbt.mca.Chunk chunk = writer.getChunk(x, z);
-
+            com.volmit.iris.util.nbt.mca.Chunk chunk = writer.getChunk(file, x, z);
             TerrainChunk tc = MCATerrainChunk.builder()
                     .writer(writer).ox(ox).oz(oz).mcaChunk(chunk)
                     .minHeight(world.getWorld().minHeight()).maxHeight(world.getWorld().maxHeight())
@@ -79,6 +86,7 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
             getEngine().generate(x * 16, z * 16,
                     Hunk.view((ChunkGenerator.ChunkData) tc), Hunk.view((ChunkGenerator.BiomeGrid) tc),
                     false);
+            chunk.cleanupPalettesAndBlockStates();
         } catch (Throwable e) {
             Iris.error("======================================");
             e.printStackTrace();
@@ -94,6 +102,11 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
         }
     }
 
+    @Override
+    public void injectChunkReplacement(World world, int x, int z, Consumer<Runnable> jobs) {
+
+    }
+
     @RegionCoordinates
     public void generateRegion(int x, int z) {
         generateRegion(x, z, null);
@@ -102,11 +115,12 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
     @RegionCoordinates
     public void generateRegion(int x, int z, PregenListener listener) {
         BurstExecutor e = burst.burst(1024);
+        MCAFile f = writer.getMCA(x, z);
         PregenTask.iterateRegion(x, z, (ii, jj) -> e.queue(() -> {
             if (listener != null) {
                 listener.onChunkGenerating(ii, jj);
             }
-            generateChunk(ii, jj);
+            generateChunk(f, ii, jj);
             if (listener != null) {
                 listener.onChunkGenerated(ii, jj);
             }
@@ -131,8 +145,6 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
     }
 
     public void close() {
-        burst.shutdownAndAwait();
-        provider.close();
         writer.close();
     }
 
@@ -149,11 +161,6 @@ public class HeadlessGenerator implements PlatformChunkGenerator {
         }
 
         return EMPTYPOINTS;
-    }
-
-    @Override
-    public Engine getEngine() {
-        return provider.getEngine();
     }
 
     @Override

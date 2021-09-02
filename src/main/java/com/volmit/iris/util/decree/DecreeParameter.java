@@ -18,30 +18,44 @@
 
 package com.volmit.iris.util.decree;
 
+import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.annotations.Param;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
+import com.volmit.iris.util.decree.specialhandlers.DummyHandler;
 import lombok.Data;
 
 import java.lang.reflect.Parameter;
-import java.util.Arrays;
 
 @Data
 public class DecreeParameter {
     private final Parameter parameter;
     private final Param param;
+    private transient final AtomicCache<DecreeParameterHandler<?>> handlerCache = new AtomicCache<>();
 
     public DecreeParameter(Parameter parameter) {
         this.parameter = parameter;
         this.param = parameter.getDeclaredAnnotation(Param.class);
-        if (param == null){
+        if (param == null) {
             throw new RuntimeException("Cannot instantiate DecreeParameter on " + parameter.getName() + " in method " + parameter.getDeclaringExecutable().getName() + "(...) in class " + parameter.getDeclaringExecutable().getDeclaringClass().getCanonicalName() + " not annotated by @Param");
         }
     }
 
     public DecreeParameterHandler<?> getHandler() {
-        return DecreeSystem.getHandler(getType());
+        return handlerCache.aquire(() -> {
+            try {
+                if (param.customHandler().equals(DummyHandler.class)) {
+                    return DecreeSystem.getHandler(getType());
+                }
+
+                return param.customHandler().getConstructor().newInstance();
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+
+            return null;
+        });
     }
 
     public Class<?> getType() {
@@ -57,16 +71,14 @@ public class DecreeParameter {
     }
 
     public boolean isRequired() {
-        return param.required();
+        return !hasDefault();
     }
 
     public KList<String> getNames() {
         KList<String> d = new KList<>();
 
-        for(String i : param.aliases())
-        {
-            if(i.isEmpty())
-            {
+        for (String i : param.aliases()) {
+            if (i.isEmpty()) {
                 continue;
             }
 
@@ -80,23 +92,26 @@ public class DecreeParameter {
     }
 
     public Object getDefaultValue() throws DecreeParsingException, DecreeWhichException {
-        return param.defaultValue().isEmpty() ? null : getHandler().parse(param.defaultValue());
+        return param.defaultValue().trim().isEmpty() ? null : getHandler().parse(param.defaultValue().trim(), true);
     }
 
     public boolean hasDefault() {
-        return !param.defaultValue().isEmpty();
+        return !param.defaultValue().trim().isEmpty();
     }
 
     public String example() {
         KList<?> ff = getHandler().getPossibilities();
         ff = ff != null ? ff : new KList<>();
         KList<String> f = ff.convert((i) -> getHandler().toStringForce(i));
-        if(f.isEmpty())
-        {
+        if (f.isEmpty()) {
             f = new KList<>();
             f.add(getHandler().getRandomDefault());
         }
 
         return f.getRandom();
+    }
+
+    public boolean isContextual() {
+        return param.contextual();
     }
 }

@@ -20,27 +20,15 @@ package com.volmit.iris.engine.jigsaw;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.core.tools.IrisToolbelt;
-import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.basic.IrisPosition;
-import com.volmit.iris.engine.object.common.IObjectPlacer;
-import com.volmit.iris.engine.object.entity.IrisEntity;
-import com.volmit.iris.engine.object.feature.IrisFeature;
-import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawPiece;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawPieceConnector;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawStructure;
-import com.volmit.iris.engine.object.objects.*;
+import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.interpolation.InterpolationMethod;
 import com.volmit.iris.util.mantle.Mantle;
 import com.volmit.iris.util.math.RNG;
 import lombok.Data;
 import org.bukkit.Axis;
-import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Entity;
 
 import java.util.function.Consumer;
 
@@ -75,6 +63,8 @@ public class PlannedStructure {
         }
 
         generateTerminators();
+
+        Iris.debug("JPlace: ROOT @ relative " + position.toString());
 
         for (PlannedPiece i : pieces) {
             Iris.debug("Place: " + i.getObject().getLoadKey() + " at @ relative " + i.getPosition().toString());
@@ -112,7 +102,19 @@ public class PlannedStructure {
         int xx = i.getPosition().getX() + sx;
         int zz = i.getPosition().getZ() + sz;
         int offset = i.getPosition().getY() - startHeight;
-        int height = placer.getHighest(xx, zz, getData()) + offset + (v.getH() / 2);
+        int height = 0;
+
+        if (i.getStructure().getStructure().getLockY() == -1) {
+            if (i.getStructure().getStructure().getOverrideYRange() != null) {
+                height = (int) i.getStructure().getStructure().getOverrideYRange().get(rng, xx, zz, getData());
+            } else {
+                height = placer.getHighest(xx, zz, getData());
+            }
+        } else {
+            height = i.getStructure().getStructure().getLockY();
+        }
+
+        height += offset + (v.getH() / 2);
 
         if (options.getMode().equals(ObjectPlaceMode.PAINT) || options.isVacuum()) {
             height = -1;
@@ -121,7 +123,6 @@ public class PlannedStructure {
         int id = rng.i(0, Integer.MAX_VALUE);
         int h = vo.place(xx, height, zz, placer, options, rng, (b)
                 -> e.set(b.getX(), b.getY(), b.getZ(), v.getLoadKey() + "@" + id), null, getData());
-
 
         for (IrisJigsawPieceConnector j : i.getAvailableConnectors()) {
             if (j.getSpawnEntity() != null)// && h != -1)
@@ -155,27 +156,6 @@ public class PlannedStructure {
 
     public void place(World world) {
         for (PlannedPiece i : pieces) {
-            Iris.sq(() -> {
-                for (IrisJigsawPieceConnector j : i.getAvailableConnectors()) {
-                    if (j.getSpawnEntity() != null) {
-                        Engine a = IrisToolbelt.access(world).getEngine();
-                        if (a == null) {
-                            Iris.warn("Cannot spawn entities from jigsaw in non Iris world!");
-                            break;
-                        }
-                        IrisPosition p = i.getWorldPosition(j).add(new IrisPosition(j.getDirection().toVector().multiply(2)));
-                        IrisEntity e = getData().getEntityLoader().load(j.getSpawnEntity());
-
-                        if (a != null) {
-                            Entity entity = e.spawn(a, new Location(world, p.getX() + 0.5, p.getY(), p.getZ() + 0.5), rng);
-                            if (j.isKeepEntity()) {
-                                entity.setPersistent(true);
-                            }
-                        }
-                    }
-                }
-            });
-
             Iris.sq(() -> i.place(world));
         }
     }
@@ -245,8 +225,9 @@ public class PlannedStructure {
     }
 
     private boolean generateRotatedPiece(PlannedPiece piece, IrisJigsawPieceConnector pieceConnector, IrisJigsawPiece idea, IrisObjectRotation rotation) {
-        if (!idea.getPlacementOptions().getRotation().isEnabled())
-            rotation = piece.getRotation(); //Inherit parent rotation
+        if (!idea.getPlacementOptions().getRotation().isEnabled()) {
+            rotation = piece.getRotation();
+        }
 
         PlannedPiece test = new PlannedPiece(this, piece.getPosition(), idea, rotation);
 

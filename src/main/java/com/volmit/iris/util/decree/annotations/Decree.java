@@ -38,10 +38,15 @@ public @interface Decree {
 
     /**
      * Only allow if studio mode is enabled
+     *
      * @return defaults to false
      */
     boolean studio() default false;
 
+    /**
+     * If the node's functions MUST be run in sync, set this to true.<br>
+     * Defaults to false
+     */
     boolean sync() default false;
 
     /**

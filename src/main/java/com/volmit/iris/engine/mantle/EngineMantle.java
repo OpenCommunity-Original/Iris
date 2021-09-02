@@ -19,32 +19,30 @@
 package com.volmit.iris.engine.mantle;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.project.loader.IrisData;
+import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.EngineTarget;
-import com.volmit.iris.engine.object.common.IObjectPlacer;
-import com.volmit.iris.engine.object.dimensional.IrisDimension;
-import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
-import com.volmit.iris.engine.object.tile.TileData;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.mantle.Mantle;
+import com.volmit.iris.util.mantle.MantleChunk;
 import com.volmit.iris.util.mantle.MantleFlag;
+import com.volmit.iris.util.matter.Matter;
+import com.volmit.iris.util.matter.MatterCavern;
+import com.volmit.iris.util.matter.MatterMarker;
+import com.volmit.iris.util.matter.slices.UpdateMatter;
 import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.MultiBurst;
-import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import org.bukkit.Chunk;
 import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 // TODO: MOVE PLACER OUT OF MATTER INTO ITS OWN THING
@@ -55,7 +53,7 @@ public interface EngineMantle extends IObjectPlacer {
 
     Engine getEngine();
 
-    CompletableFuture<Integer> getRadius();
+    int getRadius();
 
     KList<MantleComponent> getComponents();
 
@@ -63,6 +61,18 @@ public interface EngineMantle extends IObjectPlacer {
 
     default int getHighest(int x, int z) {
         return getHighest(x, z, getData());
+    }
+
+    @ChunkCoordinates
+    default KList<IrisPosition> findMarkers(int x, int z, MatterMarker marker) {
+        KList<IrisPosition> p = new KList<>();
+        getMantle().iterateChunk(x, z, MatterMarker.class, (xx, yy, zz, mm) -> {
+            if (marker.equals(mm)) {
+                p.add(new IrisPosition(xx + (x << 4), yy, zz + (z << 4)));
+            }
+        });
+
+        return p;
     }
 
     default int getHighest(int x, int z, boolean ignoreFluid) {
@@ -81,6 +91,10 @@ public interface EngineMantle extends IObjectPlacer {
 
     default int trueHeight(int x, int z) {
         return getComplex().getTrueHeightStream().get(x, z);
+    }
+
+    default boolean isCarved(int x, int h, int z) {
+        return getMantle().get(x, h, z, MatterCavern.class) != null;
     }
 
     @Override
@@ -170,50 +184,56 @@ public interface EngineMantle extends IObjectPlacer {
     }
 
     default int getRealRadius() {
-        try {
-            return (int) Math.ceil(getRadius().get() / 2D);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (ExecutionException e) {
-            e.printStackTrace();
-        }
-
-        return 0;
+        return (int) Math.ceil(getRadius() / 2D);
     }
 
 
     @ChunkCoordinates
-    default void generateMatter(int x, int z) {
+    default void generateMatter(int x, int z, boolean multicore) {
         if (!getEngine().getDimension().isUseMantle()) {
             return;
         }
 
-        PrecisionStopwatch p = PrecisionStopwatch.start();
-        List<Runnable> post = Collections.synchronizedList(new KList<>());
-        Consumer<Runnable> c = post::add;
+        KList<Runnable> post = new KList<>();
+        Consumer<Runnable> c = (i) -> {
+            synchronized (post) {
+                post.add(i);
+            }
+        };
         int s = getRealRadius();
-        BurstExecutor burst = burst().burst();
-
+        BurstExecutor burst = burst().burst(multicore);
+        MantleWriter writer = getMantle().write(this, x, z, s * 2);
         for (int i = -s; i <= s; i++) {
-            int xx = i + x;
             for (int j = -s; j <= s; j++) {
+                int xx = i + x;
                 int zz = j + z;
                 burst.queue(() -> {
-                    getComponents().forEach((f) -> generateMantleComponent(xx, zz, f, c));
+                    MantleChunk mc = getMantle().getChunk(xx, zz);
+
+                    for (MantleComponent k : getComponents()) {
+                        generateMantleComponent(writer, xx, zz, k, c, mc);
+                    }
                 });
             }
         }
 
         burst.complete();
-        burst().burst(post);
+
+        while (!post.isEmpty()) {
+            KList<Runnable> px = post.copy();
+            post.clear();
+            burst().burst(multicore, px);
+        }
+
+        getMantle().flag(x, z, MantleFlag.REAL, true);
     }
 
-    default void generateMantleComponent(int x, int z, MantleComponent c, Consumer<Runnable> post) {
-        getMantle().raiseFlag(x, z, c.getFlag(), () -> c.generateLayer(x, z, post));
+    default void generateMantleComponent(MantleWriter writer, int x, int z, MantleComponent c, Consumer<Runnable> post, MantleChunk mc) {
+        mc.raiseFlag(c.getFlag(), () -> c.generateLayer(writer, x, z, post));
     }
 
     @ChunkCoordinates
-    default <T> void insertMatter(int x, int z, Class<T> t, Hunk<T> blocks) {
+    default <T> void insertMatter(int x, int z, Class<T> t, Hunk<T> blocks, boolean multicore) {
         if (!getEngine().getDimension().isUseMantle()) {
             return;
         }
@@ -223,29 +243,37 @@ public interface EngineMantle extends IObjectPlacer {
 
     @BlockCoordinates
     default void updateBlock(int x, int y, int z) {
-        getMantle().flag(x >> 4, z >> 4, MantleFlag.UPDATE, true);
-        getMantle().set(x, y, z, true);
+        getMantle().set(x, y, z, UpdateMatter.ON);
+    }
+
+    @BlockCoordinates
+    default void dropCavernBlock(int x, int y, int z) {
+        Matter matter = getMantle().getChunk(x & 15, z & 15).get(y & 15);
+
+        if (matter != null) {
+            matter.slice(MatterCavern.class).set(x & 15, y & 15, z & 15, null);
+        }
     }
 
     @ChunkCoordinates
-    default KList<IrisFeaturePositional> getFeaturesInChunk(Chunk c) {
+    default List<IrisFeaturePositional> getFeaturesInChunk(Chunk c) {
         return getFeaturesInChunk(c.getX(), c.getZ());
     }
 
     @ChunkCoordinates
-    default KList<IrisFeaturePositional> getFeaturesInChunk(int x, int z) {
-        KList<IrisFeaturePositional> pos = new KList<>();
-        getMantle().iterateChunk(x, z, IrisFeaturePositional.class, (a, b, c, f) -> pos.add(f), MantleFlag.FEATURE);
-        return pos;
+    default List<IrisFeaturePositional> getFeaturesInChunk(int x, int z) {
+        return getMantle().getChunk(x, z).getFeatures();
+    }
+
+
+    @ChunkCoordinates
+    default KList<IrisFeaturePositional> forEachFeature(Chunk c) {
+        return forEachFeature((c.getX() << 4) + 8, (c.getZ() << 4) + 8);
     }
 
     @BlockCoordinates
     default KList<IrisFeaturePositional> forEachFeature(double x, double z) {
         KList<IrisFeaturePositional> pos = new KList<>();
-
-        if (!getEngine().getDimension().hasFeatures(getEngine())) {
-            return pos;
-        }
 
         for (IrisFeaturePositional i : getEngine().getDimension().getSpecificFeatures()) {
             if (i.shouldFilter(x, z, getEngine().getComplex().getRng(), getData())) {
@@ -261,7 +289,7 @@ public interface EngineMantle extends IObjectPlacer {
         for (i = -s; i <= s; i++) {
             for (j = -s; j <= s; j++) {
                 try {
-                    for (IrisFeaturePositional k : getFeaturesInChunk(i + cx, j + cx)) {
+                    for (IrisFeaturePositional k : getFeaturesInChunk(i + cx, j + cz)) {
                         if (k.shouldFilter(x, z, getEngine().getComplex().getRng(), getData())) {
                             pos.add(k);
                         }
@@ -275,5 +303,17 @@ public interface EngineMantle extends IObjectPlacer {
         }
 
         return pos;
+    }
+
+    default boolean queueRegenerate(int x, int z) {
+        return false; // TODO:
+    }
+
+    default boolean dequeueRegenerate(int x, int z) {
+        return false;// TODO:
+    }
+
+    default int getLoadedRegionCount() {
+        return getMantle().getLoadedRegionCount();
     }
 }

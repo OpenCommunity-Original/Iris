@@ -19,9 +19,9 @@
 package com.volmit.iris.core.project;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.core.project.loader.IrisRegistrant;
-import com.volmit.iris.core.project.loader.ResourceLoader;
+import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.core.loader.IrisRegistrant;
+import com.volmit.iris.core.loader.ResourceLoader;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -120,10 +120,6 @@ public class SchemaBuilder {
 
             JSONObject property = buildProperty(k, c);
 
-            if (property.getBoolean("!required")) {
-                required.put(k.getName());
-            }
-
             property.remove("!required");
             properties.put(k.getName(), property);
         }
@@ -133,6 +129,19 @@ public class SchemaBuilder {
         }
 
         o.put("properties", properties);
+
+
+        if (c.isAnnotationPresent(Snippet.class)) {
+            JSONObject anyOf = new JSONObject();
+            JSONArray arr = new JSONArray();
+            JSONObject str = new JSONObject();
+            str.put("type", "string");
+            arr.put(o);
+            arr.put(str);
+            anyOf.put("anyOf", arr);
+
+            return anyOf;
+        }
 
         return o;
     }
@@ -523,26 +532,62 @@ public class SchemaBuilder {
         d.add(fancyType);
         d.add(getDescription(k.getType()));
 
+        if (k.getType().isAnnotationPresent(Snippet.class)) {
+            String sm = k.getType().getDeclaredAnnotation(Snippet.class).value();
+            d.add("    ");
+            d.add("You can instead specify \"snippet/" + sm + "/some-name.json\" to use a snippet file instead of specifying it here.");
+        }
+
         try {
             k.setAccessible(true);
             Object value = k.get(cl.newInstance());
 
             if (value != null) {
                 if (value instanceof List) {
+                    d.add("    ");
                     d.add("* Default Value is an empty list");
                 } else if (!cl.isPrimitive() && !(value instanceof Number) && !(value instanceof String) && !(cl.isEnum())) {
+                    d.add("    ");
                     d.add("* Default Value is a default object (create this object to see default properties)");
                 } else {
+                    d.add("    ");
                     d.add("* Default Value is " + value);
                 }
             }
-        } catch (Throwable e) {
-            Iris.reportError(e);
+        } catch (Throwable ignored) {
+
         }
 
         description.forEach((g) -> d.add(g.trim()));
         prop.put("type", type);
         prop.put("description", d.toString("\n"));
+
+        if (k.getType().isAnnotationPresent(Snippet.class)) {
+            JSONObject anyOf = new JSONObject();
+            JSONArray arr = new JSONArray();
+            JSONObject str = new JSONObject();
+            str.put("type", "string");
+            String key = "enum-snippet-" + k.getType().getDeclaredAnnotation(Snippet.class).value();
+            str.put("$ref", "#/definitions/" + key);
+
+            if (!definitions.containsKey(key)) {
+                JSONObject j = new JSONObject();
+                JSONArray snl = new JSONArray();
+                data.getPossibleSnippets(k.getType().getDeclaredAnnotation(Snippet.class).value()).forEach(snl::put);
+                j.put("enum", snl);
+                definitions.put(key, j);
+            }
+
+            arr.put(prop);
+            arr.put(str);
+            prop.put("description", d.toString("\n"));
+            str.put("description", d.toString("\n"));
+            anyOf.put("anyOf", arr);
+            anyOf.put("description", d.toString("\n"));
+            anyOf.put("!required", k.isAnnotationPresent(Required.class));
+
+            return anyOf;
+        }
 
         return prop;
     }

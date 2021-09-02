@@ -25,10 +25,18 @@ import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 
+import java.util.stream.Collectors;
+
 public class WorldHandler implements DecreeParameterHandler<World> {
     @Override
     public KList<World> getPossibilities() {
-        return new KList<>(Bukkit.getWorlds());
+        KList<World> options = new KList<>();
+        for (World world : Bukkit.getWorlds()) {
+            if (!world.getName().toLowerCase().startsWith("iris/")) {
+                options.add(world);
+            }
+        }
+        return options;
     }
 
     @Override
@@ -37,30 +45,24 @@ public class WorldHandler implements DecreeParameterHandler<World> {
     }
 
     @Override
-    public World parse(String in) throws DecreeParsingException, DecreeWhichException {
-        try
-        {
-            KList<World> options = getPossibilities(in);
+    public World parse(String in, boolean force) throws DecreeParsingException, DecreeWhichException {
+        KList<World> options = getPossibilities(in);
 
-            if(options.isEmpty())
-            {
-                throw new DecreeParsingException("Unable to find World \"" + in + "\"");
-            }
-
-            else if(options.size() > 1)
-            {
+        if (options.isEmpty()) {
+            throw new DecreeParsingException("Unable to find World \"" + in + "\"");
+        } else if (options.size() > 1) {
+            if (force) {
+                try {
+                    return options.stream().filter((i) -> toString(i).equalsIgnoreCase(in)).collect(Collectors.toList()).get(0);
+                } catch (Throwable e) {
+                    throw new DecreeParsingException("Unable to filter which Biome \"" + in + "\"");
+                }
+            } else {
                 throw new DecreeWhichException();
             }
+        }
 
-            return options.get(0);
-        }
-        catch(DecreeParsingException e){
-            throw e;
-        }
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to find World \"" + in + "\" because of an uncaught exception: " + e);
-        }
+        return options.get(0);
     }
 
     @Override
@@ -69,8 +71,7 @@ public class WorldHandler implements DecreeParameterHandler<World> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return "world";
     }
 }

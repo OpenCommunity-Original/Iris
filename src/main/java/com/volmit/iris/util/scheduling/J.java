@@ -23,6 +23,7 @@ import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.function.NastyFunction;
 import com.volmit.iris.util.function.NastyFuture;
 import com.volmit.iris.util.function.NastyRunnable;
+import com.volmit.iris.util.function.NastySupplier;
 import com.volmit.iris.util.math.FinalInteger;
 import com.volmit.iris.util.parallel.MultiBurst;
 import org.bukkit.Bukkit;
@@ -125,11 +126,18 @@ public class J {
         return attemptCatch(r) == null;
     }
 
+    public static <T> T attemptResult(NastySupplier<T> r) {
+        try {
+            return r.get();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     public static Throwable attemptCatch(NastyRunnable r) {
         try {
             r.run();
         } catch (Throwable e) {
-            Iris.reportError(e);
             return e;
         }
 
@@ -223,6 +231,15 @@ public class J {
         return f;
     }
 
+    public static CompletableFuture sfut(Runnable r, int delay) {
+        CompletableFuture f = new CompletableFuture();
+        Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, () -> {
+            r.run();
+            f.complete(null);
+        }, delay);
+        return f;
+    }
+
     public static CompletableFuture afut(Runnable r) {
         CompletableFuture f = new CompletableFuture();
         J.a(() -> {
@@ -239,7 +256,11 @@ public class J {
      * @param delay the delay to wait in ticks before running
      */
     public static void s(Runnable r, int delay) {
-        Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, r, delay);
+        try {
+            Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, r, delay);
+        } catch (Throwable e) {
+            Iris.reportError(e);
+        }
     }
 
     /**

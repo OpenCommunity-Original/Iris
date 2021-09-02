@@ -18,19 +18,10 @@
 
 package com.volmit.iris.engine.jigsaw;
 
-import com.volmit.iris.core.project.loader.IrisData;
+import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.basic.IrisPosition;
-import com.volmit.iris.engine.object.common.IObjectPlacer;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawPiece;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawPieceConnector;
-import com.volmit.iris.engine.object.loot.IrisLootTable;
-import com.volmit.iris.engine.object.meta.InventorySlotType;
-import com.volmit.iris.engine.object.objects.IrisObject;
-import com.volmit.iris.engine.object.objects.IrisObjectRotation;
-import com.volmit.iris.engine.object.objects.IrisObjectTranslate;
-import com.volmit.iris.engine.object.tile.TileData;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.engine.platform.PlatformChunkGenerator;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.AxisAlignedBB;
@@ -205,6 +196,11 @@ public class PlannedPiece {
 
             @Override
             public boolean isPreventingDecay() {
+                return false;
+            }
+
+            @Override
+            public boolean isCarved(int x, int y, int z) {
                 return false;
             }
 

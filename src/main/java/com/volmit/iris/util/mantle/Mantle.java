@@ -20,6 +20,9 @@ package com.volmit.iris.util.mantle;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.mantle.EngineMantle;
+import com.volmit.iris.engine.mantle.MantleWriter;
+import com.volmit.iris.engine.object.IrisFeaturePositional;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.documentation.BlockCoordinates;
@@ -33,14 +36,14 @@ import com.volmit.iris.util.matter.Matter;
 import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.HyperLock;
 import com.volmit.iris.util.parallel.MultiBurst;
+import org.bukkit.Chunk;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -75,10 +78,18 @@ public class Mantle {
         unload = new KSet<>();
         loadedRegions = new KMap<>();
         lastUse = new KMap<>();
-        ioBurst = new MultiBurst("Iris Mantle[" + dataFolder.hashCode() + "]", Thread.MIN_PRIORITY, Runtime.getRuntime().availableProcessors() / 2);
+        ioBurst = MultiBurst.burst;
         Iris.debug("Opened The Mantle " + C.DARK_AQUA + dataFolder.getAbsolutePath());
     }
 
+    /**
+     * Raise a flag if it is lowered currently, If the flag was raised, execute the runnable
+     *
+     * @param x    the chunk x
+     * @param z    the chunk z
+     * @param flag the flag to raise
+     * @param r    the runnable to fire if the flag is now raised (and was previously lowered)
+     */
     @ChunkCoordinates
     public void raiseFlag(int x, int z, MantleFlag flag, Runnable r) {
         if (!hasFlag(x, z, flag)) {
@@ -87,6 +98,28 @@ public class Mantle {
         }
     }
 
+    /**
+     * Obtain a cached writer which only contains cached chunks.
+     * This avoids locking on regions when writing to lots of chunks
+     *
+     * @param x      the x chunk
+     * @param z      the z chunk
+     * @param radius the radius chunks
+     * @return the writer
+     */
+    @ChunkCoordinates
+    public MantleWriter write(EngineMantle engineMantle, int x, int z, int radius) {
+        return new MantleWriter(engineMantle, this, x, z, radius);
+    }
+
+    /**
+     * Lower a flag if it is raised. If the flag was lowered (meaning it was previously raised), execute the runnable
+     *
+     * @param x    the chunk x
+     * @param z    the chunk z
+     * @param flag the flag to lower
+     * @param r    the runnable that is fired if the flag was raised but is now lowered
+     */
     @ChunkCoordinates
     public void lowerFlag(int x, int z, MantleFlag flag, Runnable r) {
         if (hasFlag(x, z, flag)) {
@@ -96,23 +129,72 @@ public class Mantle {
     }
 
     @ChunkCoordinates
+    public MantleChunk getChunk(int x, int z) {
+        return get(x >> 5, z >> 5).getOrCreate(x & 31, z & 31);
+    }
+
+    /**
+     * Flag or unflag a chunk
+     *
+     * @param x       the chunk x
+     * @param z       the chunk z
+     * @param flag    the flag
+     * @param flagged should it be set to flagged or not
+     */
+    @ChunkCoordinates
     public void flag(int x, int z, MantleFlag flag, boolean flagged) {
         get(x >> 5, z >> 5).getOrCreate(x & 31, z & 31).flag(flag, flagged);
     }
 
+    public void deleteChunk(int x, int z) {
+        get(x >> 5, z >> 5).delete(x & 31, z & 31);
+    }
+
+    /**
+     * Check very quickly if a tectonic plate exists via cached or the file system
+     *
+     * @param x the x region coordinate
+     * @param z the z region coordinate
+     * @return true if it exists
+     */
+    @RegionCoordinates
+    public boolean hasTectonicPlate(int x, int z) {
+        Long k = key(x, z);
+        return loadedRegions.containsKey(k) || fileForRegion(dataFolder, k).exists();
+    }
+
+    /**
+     * Iterate data in a chunk
+     *
+     * @param x        the chunk x
+     * @param z        the chunk z
+     * @param type     the type of data to iterate
+     * @param iterator the iterator (x,y,z,data) -> do stuff
+     * @param <T>      the type of data to iterate
+     */
     @ChunkCoordinates
-    public <T> void iterateChunk(int x, int z, Class<T> type, Consumer4<Integer, Integer, Integer, T> iterator, MantleFlag... requiredFlags) {
-        for (MantleFlag i : requiredFlags) {
-            if (!hasFlag(x, z, i)) {
-                return;
-            }
+    public <T> void iterateChunk(int x, int z, Class<T> type, Consumer4<Integer, Integer, Integer, T> iterator) {
+        if (!hasTectonicPlate(x >> 5, z >> 5)) {
+            return;
         }
 
         get(x >> 5, z >> 5).getOrCreate(x & 31, z & 31).iterate(type, iterator);
     }
 
+    /**
+     * Does this chunk have a flag on it?
+     *
+     * @param x    the x
+     * @param z    the z
+     * @param flag the flag to test
+     * @return true if it's flagged
+     */
     @ChunkCoordinates
     public boolean hasFlag(int x, int z, MantleFlag flag) {
+        if (!hasTectonicPlate(x >> 5, z >> 5)) {
+            return false;
+        }
+
         return get(x >> 5, z >> 5).getOrCreate(x & 31, z & 31).isFlagged(flag);
     }
 
@@ -136,16 +218,20 @@ public class Mantle {
             throw new RuntimeException("The Mantle is closed");
         }
 
-        if(y < 0)
-        {
+        if (y < 0 || y >= worldHeight) {
             return;
         }
 
-        Matter matter = get((x >> 4) >> 5, (z >> 4) >> 5)
-                .getOrCreate((x >> 4) & 31, (z >> 4) & 31)
-                .getOrCreate(y >> 4);
-        matter.slice(matter.getClass(t))
-                .set(x & 15, y & 15, z & 15, t);
+        if (t instanceof IrisFeaturePositional) {
+            get((x >> 4) >> 5, (z >> 4) >> 5)
+                    .getOrCreate((x >> 4) & 31, (z >> 4) & 31).addFeature((IrisFeaturePositional) t);
+        } else {
+            Matter matter = get((x >> 4) >> 5, (z >> 4) >> 5)
+                    .getOrCreate((x >> 4) & 31, (z >> 4) & 31)
+                    .getOrCreate(y >> 4);
+            matter.slice(matter.getClass(t))
+                    .set(x & 15, y & 15, z & 15, t);
+        }
     }
 
     /**
@@ -170,8 +256,11 @@ public class Mantle {
             throw new RuntimeException("The Mantle is closed");
         }
 
-        if(y < 0)
-        {
+        if (!hasTectonicPlate((x >> 4) >> 5, (z >> 4) >> 5)) {
+            return null;
+        }
+
+        if (y < 0 || y >= worldHeight) {
             return null;
         }
 
@@ -182,6 +271,15 @@ public class Mantle {
     }
 
     /**
+     * Is this mantle closed
+     *
+     * @return true if it is
+     */
+    public boolean isClosed() {
+        return closed.get();
+    }
+
+    /**
      * Closes the Mantle. By closing the mantle, you can no longer read or write
      * any data to the mantle or it's Tectonic Plates. Closing will also flush any
      * loaded regions to the disk in parallel.
@@ -189,7 +287,7 @@ public class Mantle {
     public synchronized void close() {
         Iris.debug("Closing The Mantle " + C.DARK_AQUA + dataFolder.getAbsolutePath());
         if (closed.get()) {
-            throw new RuntimeException("The Mantle is closed");
+            return;
         }
 
         closed.set(true);
@@ -204,8 +302,12 @@ public class Mantle {
             });
         }
 
-        b.complete();
-        ioBurst.shutdownNow();
+        try {
+            b.complete();
+        } catch (Throwable e) {
+            Iris.reportError(e);
+        }
+
         Iris.debug("The Mantle has Closed " + C.DARK_AQUA + dataFolder.getAbsolutePath());
     }
 
@@ -259,8 +361,7 @@ public class Mantle {
      */
     @RegionCoordinates
     private TectonicPlate get(int x, int z) {
-        if(io.get())
-        {
+        if (io.get()) {
             try {
                 return getSafe(x, z).get();
             } catch (InterruptedException e) {
@@ -272,21 +373,18 @@ public class Mantle {
 
         TectonicPlate p = loadedRegions.get(key(x, z));
 
-        if(p != null)
-        {
+        if (p != null) {
             return p;
         }
 
         try {
             return getSafe(x, z).get();
         } catch (InterruptedException e) {
-            Iris.error("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread intterruption");
+            Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread intterruption (hotload?)");
             Iris.reportError(e);
-            e.printStackTrace();
         } catch (ExecutionException e) {
-            Iris.error("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread execution exception");
+            Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread execution exception (engine close?)");
             Iris.reportError(e);
-            e.printStackTrace();
         }
 
         Iris.warn("Retrying to get " + x + " " + z + " Mantle Region");
@@ -303,7 +401,7 @@ public class Mantle {
      * @return the future of a tectonic plate.
      */
     @RegionCoordinates
-    private CompletableFuture<TectonicPlate> getSafe(int x, int z) {
+    private Future<TectonicPlate> getSafe(int x, int z) {
         Long k = key(x, z);
         TectonicPlate p = loadedRegions.get(k);
 
@@ -325,13 +423,18 @@ public class Mantle {
             if (file.exists()) {
                 try {
                     region = TectonicPlate.read(worldHeight, file);
+
+                    if (region.getX() != x || region.getZ() != z) {
+                        Iris.warn("Loaded Tectonic Plate " + x + "," + z + " but read it as " + region.getX() + "," + region.getZ() + "... Assuming " + x + "," + z);
+                    }
+
                     loadedRegions.put(k, region);
                     Iris.debug("Loaded Tectonic Plate " + C.DARK_GREEN + x + " " + z + C.DARK_AQUA + " " + file.getName());
                 } catch (Throwable e) {
                     Iris.error("Failed to read Tectonic Plate " + file.getAbsolutePath() + " creating a new chunk instead.");
                     Iris.reportError(e);
                     e.printStackTrace();
-                    region = new TectonicPlate(worldHeight);
+                    region = new TectonicPlate(worldHeight, x, z);
                     loadedRegions.put(k, region);
                     Iris.debug("Created new Tectonic Plate (Due to Load Failure) " + C.DARK_GREEN + x + " " + z);
                 }
@@ -339,29 +442,68 @@ public class Mantle {
                 return region;
             }
 
-            region = new TectonicPlate(worldHeight);
+            region = new TectonicPlate(worldHeight, x, z);
             loadedRegions.put(k, region);
             Iris.debug("Created new Tectonic Plate " + C.DARK_GREEN + x + " " + z);
             return region;
         }));
     }
 
+    /**
+     * Get the file for a region
+     *
+     * @param folder the folder
+     * @param x      the x coord
+     * @param z      the z coord
+     * @return the file
+     */
     public static File fileForRegion(File folder, int x, int z) {
         return fileForRegion(folder, key(x, z));
     }
 
+    /**
+     * Get the file for the given region
+     *
+     * @param folder the data folder
+     * @param key    the region key
+     * @return the file
+     */
     public static File fileForRegion(File folder, Long key) {
-        String id = UUID.nameUUIDFromBytes(("TectonicPlate:" + key).getBytes(StandardCharsets.UTF_8)).toString();
-        File f = new File(folder, id.substring(0, 2) + "/" + id.split("\\Q-\\E")[3] + "/" + id + ".ttp");
-        f.getParentFile().mkdirs();
+        File f = new File(folder, "p." + key + ".ttp");
+        if (!f.getParentFile().exists()) {
+            f.getParentFile().mkdirs();
+        }
         return f;
     }
 
+    /**
+     * Get the long value representing a chunk or region coordinate
+     *
+     * @param x the x
+     * @param z the z
+     * @return the value
+     */
     public static Long key(int x, int z) {
         return Cache.key(x, z);
     }
 
     public void saveAll() {
 
+    }
+
+    public int getWorldHeight() {
+        return worldHeight;
+    }
+
+    public MantleChunk getChunk(Chunk e) {
+        return getChunk(e.getX(), e.getZ());
+    }
+
+    public void deleteChunkSlice(int x, int z, Class<?> c) {
+        getChunk(x, z).deleteSlices(c);
+    }
+
+    public int getLoadedRegionCount() {
+        return loadedRegions.size();
     }
 }

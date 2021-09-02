@@ -23,10 +23,12 @@ import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.BlockPosition;
+import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.J;
 import lombok.Data;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 
@@ -47,6 +49,8 @@ public class DustRevealer {
             String a = access.getObjectPlacementKey(block.getX(), block.getY(), block.getZ());
 
             if (a != null) {
+                world.playSound(block.getLocation(), Sound.ITEM_LODESTONE_COMPASS_LOCK, 1f, 0.1f);
+
                 sender.sendMessage("Found object " + a);
                 J.a(() -> {
                     new DustRevealer(access, world, new BlockPosition(block.getX(), block.getY(), block.getZ()), a, new KList<>());
@@ -63,8 +67,15 @@ public class DustRevealer {
         this.hits = hits;
 
         J.s(() -> {
-            new BlockSignal(world.getBlockAt(block.getX(), block.getY(), block.getZ()), 100);
+            new BlockSignal(world.getBlockAt(block.getX(), block.getY(), block.getZ()), 7);
+            if (M.r(0.25)) {
+                world.playSound(block.toBlock(world).getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1f, RNG.r.f(0.2f, 2f));
+            }
             J.a(() -> {
+                while (BlockSignal.active.get() > 128) {
+                    J.sleep(5);
+                }
+
                 try {
                     is(new BlockPosition(block.getX() + 1, block.getY(), block.getZ()));
                     is(new BlockPosition(block.getX() - 1, block.getY(), block.getZ()));
@@ -97,7 +108,7 @@ public class DustRevealer {
                     e.printStackTrace();
                 }
             });
-        }, RNG.r.i(3, 6));
+        }, RNG.r.i(2, 8));
     }
 
     private boolean is(BlockPosition a) {

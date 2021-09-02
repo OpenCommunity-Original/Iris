@@ -26,6 +26,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 public class PlayerHandler implements DecreeParameterHandler<Player> {
     @Override
@@ -39,28 +40,24 @@ public class PlayerHandler implements DecreeParameterHandler<Player> {
     }
 
     @Override
-    public Player parse(String in) throws DecreeParsingException, DecreeWhichException {
-        try
-        {
-            KList<Player> options = getPossibilities(in);
+    public Player parse(String in, boolean force) throws DecreeParsingException, DecreeWhichException {
+        KList<Player> options = getPossibilities(in);
 
-            if(options.isEmpty())
-            {
-                throw new DecreeParsingException("Unable to find Player \"" + in + "\"");
-            }
-
-            else if(options.size() > 1)
-            {
+        if (options.isEmpty()) {
+            throw new DecreeParsingException("Unable to find Player \"" + in + "\"");
+        } else if (options.size() > 1) {
+            if (force) {
+                try {
+                    return options.stream().filter((i) -> toString(i).equalsIgnoreCase(in)).collect(Collectors.toList()).get(0);
+                } catch (Throwable e) {
+                    throw new DecreeParsingException("Unable to filter which Biome \"" + in + "\"");
+                }
+            } else {
                 throw new DecreeWhichException();
             }
-
-            return options.get(0);
         }
 
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to find Player \"" + in + "\" because of an uncaught exception: " + e);
-        }
+        return options.get(0);
     }
 
     @Override
@@ -69,8 +66,7 @@ public class PlayerHandler implements DecreeParameterHandler<Player> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return "playername";
     }
 }

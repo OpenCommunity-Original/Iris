@@ -18,7 +18,6 @@
 
 package com.volmit.iris.util.format;
 
-import com.google.common.base.Preconditions;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RollingSequence;
 
@@ -874,7 +873,7 @@ public class Form {
 
         DF = new DecimalFormat(form);
 
-        return DF.format(i);
+        return DF.format(i).replaceAll("\\Q,\\E", ".");
     }
 
     /**

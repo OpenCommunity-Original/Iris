@@ -19,8 +19,8 @@
 package com.volmit.iris.util.decree.handlers;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.object.regional.IrisRegion;
+import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.object.IrisRegion;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
@@ -28,6 +28,7 @@ import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
 
 import java.io.File;
+import java.util.stream.Collectors;
 
 public class RegionHandler implements DecreeParameterHandler<IrisRegion> {
     @Override
@@ -35,12 +36,10 @@ public class RegionHandler implements DecreeParameterHandler<IrisRegion> {
         KMap<String, IrisRegion> p = new KMap<>();
 
         //noinspection ConstantConditions
-        for(File i : Iris.instance.getDataFolder("packs").listFiles())
-        {
-            if(i.isDirectory()) {
-                IrisData data = new IrisData(i, true);
-                for (IrisRegion j : data.getRegionLoader().loadAll(data.getRegionLoader().getPossibleKeys()))
-                {
+        for (File i : Iris.instance.getDataFolder("packs").listFiles()) {
+            if (i.isDirectory()) {
+                IrisData data = IrisData.get(i);
+                for (IrisRegion j : data.getRegionLoader().loadAll(data.getRegionLoader().getPossibleKeys())) {
                     p.putIfAbsent(j.getLoadKey(), j);
                 }
 
@@ -57,30 +56,27 @@ public class RegionHandler implements DecreeParameterHandler<IrisRegion> {
     }
 
     @Override
-    public IrisRegion parse(String in) throws DecreeParsingException, DecreeWhichException {
-        try
-        {
-            KList<IrisRegion> options = getPossibilities(in);
+    public IrisRegion parse(String in, boolean force) throws DecreeParsingException, DecreeWhichException {
+        if (in.equals("null")) {
+            return null;
+        }
+        KList<IrisRegion> options = getPossibilities(in);
 
-            if(options.isEmpty())
-            {
-                throw new DecreeParsingException("Unable to find Region \"" + in + "\"");
-            }
-
-            else if(options.size() > 1)
-            {
+        if (options.isEmpty()) {
+            throw new DecreeParsingException("Unable to find Region \"" + in + "\"");
+        } else if (options.size() > 1) {
+            if (force) {
+                try {
+                    return options.stream().filter((i) -> toString(i).equalsIgnoreCase(in)).collect(Collectors.toList()).get(0);
+                } catch (Throwable e) {
+                    throw new DecreeParsingException("Unable to filter which Biome \"" + in + "\"");
+                }
+            } else {
                 throw new DecreeWhichException();
             }
+        }
 
-            return options.get(0);
-        }
-        catch(DecreeParsingException e){
-            throw e;
-        }
-        catch(Throwable e)
-        {
-            throw new DecreeParsingException("Unable to find Region \"" + in + "\" because of an uncaught exception: " + e);
-        }
+        return options.get(0);
     }
 
     @Override
@@ -89,8 +85,7 @@ public class RegionHandler implements DecreeParameterHandler<IrisRegion> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return "region";
     }
 }

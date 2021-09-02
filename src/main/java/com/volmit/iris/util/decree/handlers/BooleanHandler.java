@@ -22,7 +22,6 @@ import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.math.M;
-import com.volmit.iris.util.math.RNG;
 
 public class BooleanHandler implements DecreeParameterHandler<Boolean> {
     @Override
@@ -36,14 +35,13 @@ public class BooleanHandler implements DecreeParameterHandler<Boolean> {
     }
 
     @Override
-    public Boolean parse(String in) throws DecreeParsingException {
-        try
-        {
+    public Boolean parse(String in, boolean force) throws DecreeParsingException {
+        try {
+            if (in.equals("null") || in.equals("other") || in.equals("flip")) {
+                return null;
+            }
             return Boolean.parseBoolean(in);
-        }
-
-        catch(Throwable e)
-        {
+        } catch (Throwable e) {
             throw new DecreeParsingException("Unable to parse boolean \"" + in + "\"");
         }
     }
@@ -54,8 +52,7 @@ public class BooleanHandler implements DecreeParameterHandler<Boolean> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return M.r(0.5) + "";
     }
 }

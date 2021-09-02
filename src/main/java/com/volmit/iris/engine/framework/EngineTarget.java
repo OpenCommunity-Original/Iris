@@ -18,17 +18,16 @@
 
 package com.volmit.iris.engine.framework;
 
-import com.volmit.iris.core.IrisSettings;
-import com.volmit.iris.core.project.loader.IrisData;
-import com.volmit.iris.engine.object.common.IrisWorld;
-import com.volmit.iris.engine.object.dimensional.IrisDimension;
+import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.object.IrisWorld;
 import com.volmit.iris.util.parallel.MultiBurst;
 import lombok.Data;
 
 @Data
 public class EngineTarget {
     private final MultiBurst burster;
-    private final IrisDimension dimension;
+    private IrisDimension dimension;
     private IrisWorld world;
     private final IrisData data;
 
@@ -36,9 +35,7 @@ public class EngineTarget {
         this.world = world;
         this.dimension = dimension;
         this.data = data;
-        this.burster = new MultiBurst("Iris Engine " + dimension.getName(),
-                IrisSettings.get().getConcurrency().getEngineThreadPriority(),
-                IrisSettings.getThreadCount(IrisSettings.get().getConcurrency().getEngineThreadCount()));
+        this.burster = MultiBurst.burst;
     }
 
     public int getHeight() {
@@ -46,6 +43,6 @@ public class EngineTarget {
     }
 
     public void close() {
-        burster.shutdownLater();
+
     }
 }

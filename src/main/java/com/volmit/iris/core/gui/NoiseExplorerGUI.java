@@ -20,7 +20,7 @@ package com.volmit.iris.core.gui;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.events.IrisEngineHotloadEvent;
-import com.volmit.iris.engine.object.noise.NoiseStyle;
+import com.volmit.iris.engine.object.NoiseStyle;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.math.M;
@@ -59,7 +59,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
     static double ascale = 10;
     CNG cng = NoiseStyle.STATIC.create(new RNG(RNG.r.nextLong()));
     @SuppressWarnings("CanBeFinal")
-    MultiBurst gx = new MultiBurst("Iris Noise Renderer", Thread.MAX_PRIORITY, Runtime.getRuntime().availableProcessors());
+    MultiBurst gx = MultiBurst.burst;
     ReentrantLock l = new ReentrantLock();
     BufferedImage img;
     int w = 0;
@@ -213,7 +213,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
                 });
             }
 
-            e.complete(1000);
+            e.complete();
             gg.drawImage(img, 0, 0, getParent().getWidth() * accuracy, getParent().getHeight() * accuracy, (img, infoflags, x, y, width, height) -> true);
         }
 
@@ -299,7 +299,6 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                nv.gx.shutdownLater();
                 Iris.instance.unregisterListener(nv);
             }
         });

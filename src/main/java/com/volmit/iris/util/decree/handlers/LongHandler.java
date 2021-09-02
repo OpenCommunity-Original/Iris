@@ -23,6 +23,8 @@ import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.math.RNG;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 public class LongHandler implements DecreeParameterHandler<Long> {
     @Override
     public KList<Long> getPossibilities() {
@@ -30,14 +32,12 @@ public class LongHandler implements DecreeParameterHandler<Long> {
     }
 
     @Override
-    public Long parse(String in) throws DecreeParsingException {
-        try
-        {
-            return Long.parseLong(in);
-        }
-
-        catch(Throwable e)
-        {
+    public Long parse(String in, boolean force) throws DecreeParsingException {
+        try {
+            AtomicReference<String> r = new AtomicReference<>(in);
+            double m = getMultiplier(r);
+            return (long) (Long.valueOf(r.get()).doubleValue() * m);
+        } catch (Throwable e) {
             throw new DecreeParsingException("Unable to parse long \"" + in + "\"");
         }
     }
@@ -53,8 +53,7 @@ public class LongHandler implements DecreeParameterHandler<Long> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return RNG.r.i(0, 99) + "";
     }
 }

@@ -19,20 +19,15 @@
 package com.volmit.iris.engine;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.mantle.MantleComponent;
+import com.volmit.iris.engine.mantle.components.MantleCarvingComponent;
 import com.volmit.iris.engine.mantle.components.MantleFeatureComponent;
 import com.volmit.iris.engine.mantle.components.MantleJigsawComponent;
 import com.volmit.iris.engine.mantle.components.MantleObjectComponent;
-import com.volmit.iris.engine.object.biome.IrisBiome;
-import com.volmit.iris.engine.object.deposits.IrisDepositGenerator;
-import com.volmit.iris.engine.object.feature.IrisFeaturePotential;
-import com.volmit.iris.engine.object.jigsaw.IrisJigsawStructurePlacement;
-import com.volmit.iris.engine.object.objects.IrisObject;
-import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
-import com.volmit.iris.engine.object.objects.IrisObjectScale;
-import com.volmit.iris.engine.object.regional.IrisRegion;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.collection.KSet;
@@ -45,7 +40,6 @@ import org.bukkit.util.BlockVector;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Data
@@ -53,13 +47,15 @@ public class IrisEngineMantle implements EngineMantle {
     private final Engine engine;
     private final Mantle mantle;
     private final KList<MantleComponent> components;
-    private final CompletableFuture<Integer> radius;
+    private final int radius;
+    private final AtomicCache<Integer> radCache = new AtomicCache<>();
 
     public IrisEngineMantle(Engine engine) {
         this.engine = engine;
         this.mantle = new Mantle(new File(engine.getWorld().worldFolder(), "mantle"), engine.getTarget().getHeight());
-        radius = burst().completeValue(this::computeParallaxSize);
+        radius = radCache.aquire(this::computeParallaxSize);
         components = new KList<>();
+        registerComponent(new MantleCarvingComponent(this));
         registerComponent(new MantleFeatureComponent(this));
         registerComponent(new MantleJigsawComponent(this));
         registerComponent(new MantleObjectComponent(this));
@@ -173,7 +169,6 @@ public class IrisEngineMantle implements EngineMantle {
                     jig = Math.max(jig, getData().getJigsawStructureLoader().load(getEngine().getDimension().getStronghold()).getMaxDimension());
                 } catch (Throwable e) {
                     Iris.reportError(e);
-                    Iris.error("THIS IS THE ONE");
                     e.printStackTrace();
                 }
             }
@@ -293,15 +288,34 @@ public class IrisEngineMantle implements EngineMantle {
         x = Math.max(z, x);
         int u = x;
         int v = computeFeatureRange();
+        int c = computeCarvingRange();
         x = Math.max(jig, x);
         x = Math.max(x, v);
+        x = Math.max(x, c);
         x = (Math.max(x, 16) + 16) >> 4;
         x = x % 2 == 0 ? x + 1 : x;
         Iris.info("Parallax Size: " + x + " Chunks");
-        Iris.info("  Object Parallax Size: " + u + " (" + ((Math.max(u, 16) + 16) >> 4) + ")");
-        Iris.info("  Jigsaw Parallax Size: " + jig + " (" + ((Math.max(jig, 16) + 16) >> 4) + ")");
-        Iris.info("  Feature Parallax Size: " + v + " (" + ((Math.max(v, 16) + 16) >> 4) + ")");
+        Iris.info("  Object Mantle Size: " + u + " (" + ((Math.max(u, 16) + 16) >> 4) + ")");
+        Iris.info("  Jigsaw Mantle Size: " + jig + " (" + ((Math.max(jig, 16) + 16) >> 4) + ")");
+        Iris.info("  Feature Mantle Size: " + v + " (" + ((Math.max(v, 16) + 16) >> 4) + ")");
+        Iris.info("  Carving Mantle Size: " + c + " (" + ((Math.max(c, 16) + 16) >> 4) + ")");
 
         return x;
+    }
+
+    private int computeCarvingRange() {
+        int m = 0;
+
+        m = Math.max(m, getDimension().getCarving().getMaxRange(getData()));
+
+        for (IrisRegion i : getDimension().getAllRegions(getEngine())) {
+            m = Math.max(m, i.getCarving().getMaxRange(getData()));
+        }
+
+        for (IrisBiome i : getDimension().getAllBiomes(getEngine())) {
+            m = Math.max(m, i.getCarving().getMaxRange(getData()));
+        }
+
+        return m;
     }
 }

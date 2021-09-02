@@ -22,19 +22,22 @@ import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.platform.PlatformChunkGenerator;
 import com.volmit.iris.util.plugin.VolmitSender;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
 
 public interface DecreeExecutor {
-    default VolmitSender sender()
-    {
+    default VolmitSender sender() {
         return DecreeContext.get();
     }
 
-    default Engine engine()
-    {
-        if(sender().isPlayer() && IrisToolbelt.access(sender().player().getWorld()) != null)
-        {
+    default Player player() {
+        return sender().player();
+    }
+
+    default Engine engine() {
+        if (sender().isPlayer() && IrisToolbelt.access(sender().player().getWorld()) != null) {
             PlatformChunkGenerator gen = IrisToolbelt.access(sender().player().getWorld());
-            if (gen != null){
+            if (gen != null) {
                 return gen.getEngine();
             }
         }
@@ -42,8 +45,21 @@ public interface DecreeExecutor {
         return null;
     }
 
-    default <T> T get(T v, T ifUndefined)
-    {
+    default PlatformChunkGenerator access() {
+        if (sender().isPlayer()) {
+            return IrisToolbelt.access(world());
+        }
+        return null;
+    }
+
+    default World world() {
+        if (sender().isPlayer()) {
+            return sender().player().getWorld();
+        }
+        return null;
+    }
+
+    default <T> T get(T v, T ifUndefined) {
         return v == null ? ifUndefined : v;
     }
 }

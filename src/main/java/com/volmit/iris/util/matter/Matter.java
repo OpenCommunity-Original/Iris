@@ -18,11 +18,9 @@
 
 package com.volmit.iris.util.matter;
 
-import com.volmit.iris.Iris;
-import com.volmit.iris.engine.object.basic.IrisPosition;
+import com.volmit.iris.engine.object.IrisPosition;
 import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.data.Varint;
-import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.math.BlockPosition;
 import org.bukkit.World;
@@ -189,7 +187,12 @@ public interface Matter {
             slice = (MatterSlice<T>) createSlice(c, this);
 
             if (slice == null) {
-                Iris.error("Unable to find a slice for class " + C.DARK_RED + c.getCanonicalName());
+                try {
+                    throw new RuntimeException("Bad slice " + c.getCanonicalName());
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                }
+
                 return null;
             }
 

@@ -24,6 +24,8 @@ import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.math.RNG;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 public class DoubleHandler implements DecreeParameterHandler<Double> {
     @Override
     public KList<Double> getPossibilities() {
@@ -31,14 +33,12 @@ public class DoubleHandler implements DecreeParameterHandler<Double> {
     }
 
     @Override
-    public Double parse(String in) throws DecreeParsingException {
-        try
-        {
-            return Double.parseDouble(in);
-        }
-
-        catch(Throwable e)
-        {
+    public Double parse(String in, boolean force) throws DecreeParsingException {
+        try {
+            AtomicReference<String> r = new AtomicReference<>(in);
+            double m = getMultiplier(r);
+            return Double.parseDouble(r.get()) * m;
+        } catch (Throwable e) {
             throw new DecreeParsingException("Unable to parse double \"" + in + "\"");
         }
     }
@@ -54,8 +54,7 @@ public class DoubleHandler implements DecreeParameterHandler<Double> {
     }
 
     @Override
-    public String getRandomDefault()
-    {
+    public String getRandomDefault() {
         return Form.f(RNG.r.d(0, 99.99), 1) + "";
     }
 }

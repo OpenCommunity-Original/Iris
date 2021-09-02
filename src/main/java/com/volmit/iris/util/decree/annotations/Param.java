@@ -18,6 +18,9 @@
 
 package com.volmit.iris.util.decree.annotations;
 
+import com.volmit.iris.util.decree.DecreeParameterHandler;
+import com.volmit.iris.util.decree.specialhandlers.DummyHandler;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -33,9 +36,7 @@ public @interface Param {
      * Required parameter.<br>
      * This is what is used in game, alongside any (if specified) {@link #aliases() aliases}
      */
-    String name();
-
-    boolean required() default false;
+    String name() default "";
 
     /**
      * The description of this parameter, used in help-popups in game.<br>
@@ -57,4 +58,11 @@ public @interface Param {
      * If someone uses /plugin foo bar=baz and you specify alias="b" here, /plugin foo b=baz will do the exact same.
      */
     String[] aliases() default "";
+
+    /**
+     * Attempts to dynamically pull context from the player, default data or something else for supported types
+     */
+    boolean contextual() default false;
+
+    Class<? extends DecreeParameterHandler<?>> customHandler() default DummyHandler.class;
 }

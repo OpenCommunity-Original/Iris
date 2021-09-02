@@ -22,13 +22,8 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.mantle.IrisMantleComponent;
-import com.volmit.iris.engine.object.biome.IrisBiome;
-import com.volmit.iris.engine.object.feature.IrisFeature;
-import com.volmit.iris.engine.object.feature.IrisFeaturePositional;
-import com.volmit.iris.engine.object.feature.IrisFeaturePotential;
-import com.volmit.iris.engine.object.objects.IrisObject;
-import com.volmit.iris.engine.object.objects.IrisObjectPlacement;
-import com.volmit.iris.engine.object.regional.IrisRegion;
+import com.volmit.iris.engine.mantle.MantleWriter;
+import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.mantle.MantleFlag;
@@ -42,21 +37,21 @@ public class MantleObjectComponent extends IrisMantleComponent {
     }
 
     @Override
-    public void generateLayer(int x, int z, Consumer<Runnable> post) {
+    public void generateLayer(MantleWriter writer, int x, int z, Consumer<Runnable> post) {
         RNG rng = new RNG(Cache.key(x, z) + seed());
         int xxx = 8 + (x << 4);
         int zzz = 8 + (z << 4);
         IrisRegion region = getComplex().getRegionStream().get(xxx, zzz);
         IrisBiome biome = getComplex().getTrueBiomeStreamNoFeatures().get(xxx, zzz);
-        placeObjects(rng, x, z, biome, region, post);
+        placeObjects(writer, rng, x, z, biome, region, post);
     }
 
     @ChunkCoordinates
-    private void placeObjects(RNG rng, int x, int z, IrisBiome biome, IrisRegion region, Consumer<Runnable> post) {
+    private void placeObjects(MantleWriter writer, RNG rng, int x, int z, IrisBiome biome, IrisRegion region, Consumer<Runnable> post) {
         for (IrisObjectPlacement i : biome.getSurfaceObjects()) {
             if (rng.chance(i.getChance() + rng.d(-0.005, 0.005)) && rng.chance(getComplex().getObjectChanceStream().get(x << 4, z << 4))) {
                 try {
-                    placeObject(rng, x << 4, z << 4, i, post);
+                    placeObject(writer, rng, x << 4, z << 4, i, post);
                 } catch (Throwable e) {
                     Iris.reportError(e);
                     Iris.error("Failed to place objects in the following biome: " + biome.getName());
@@ -70,7 +65,7 @@ public class MantleObjectComponent extends IrisMantleComponent {
         for (IrisObjectPlacement i : region.getSurfaceObjects()) {
             if (rng.chance(i.getChance() + rng.d(-0.005, 0.005)) && rng.chance(getComplex().getObjectChanceStream().get(x << 4, z << 4))) {
                 try {
-                    placeObject(rng, x << 4, z << 4, i, post);
+                    placeObject(writer, rng, x << 4, z << 4, i, post);
                 } catch (Throwable e) {
                     Iris.reportError(e);
                     Iris.error("Failed to place objects in the following region: " + region.getName());
@@ -83,46 +78,36 @@ public class MantleObjectComponent extends IrisMantleComponent {
     }
 
     @BlockCoordinates
-    private void placeObject(RNG rng, int x, int z, IrisObjectPlacement objectPlacement, Consumer<Runnable> post) {
+    private void placeObject(MantleWriter writer, RNG rng, int x, int z, IrisObjectPlacement objectPlacement, Consumer<Runnable> post) {
         for (int i = 0; i < objectPlacement.getDensity(); i++) {
             IrisObject v = objectPlacement.getScale().get(rng, objectPlacement.getObject(getComplex(), rng));
             if (v == null) {
                 return;
             }
-            int xx = rng.i(x, x + 16);
-            int zz = rng.i(z, z + 16);
+            int xx = rng.i(x, x + 15);
+            int zz = rng.i(z, z + 15);
             int id = rng.i(0, Integer.MAX_VALUE);
 
-            Runnable r = () -> {
-                int h = v.place(xx, -1, zz, getEngineMantle(), objectPlacement, rng,
-                        (b) -> getMantle().set(b.getX(), b.getY(), b.getZ(),
-                                v.getLoadKey() + "@" + id), null, getData());
+            int h = v.place(xx, -1, zz, writer, objectPlacement, rng,
+                    (b) -> writer.setData(b.getX(), b.getY(), b.getZ(),
+                            v.getLoadKey() + "@" + id), null, getData());
+            if (objectPlacement.usesFeatures() && h >= 0) {
+                if (objectPlacement.isVacuum()) {
+                    double a = Math.max(v.getW(), v.getD());
+                    IrisFeature f = new IrisFeature();
+                    f.setConvergeToHeight(h);
+                    f.setBlockRadius(a);
+                    f.setInterpolationRadius(objectPlacement.getVacuumInterpolationRadius());
+                    f.setInterpolator(objectPlacement.getVacuumInterpolationMethod());
+                    f.setStrength(1D);
+                    writer.setData(xx, 0, zz, new IrisFeaturePositional(xx, zz, f));
+                }
 
-                if (objectPlacement.usesFeatures()) {
-                    if (objectPlacement.isVacuum()) {
-
-                        double a = Math.max(v.getW(), v.getD());
-                        IrisFeature f = new IrisFeature();
-                        f.setConvergeToHeight(h - (v.getH() >> 1));
-                        f.setBlockRadius(a);
-                        f.setInterpolationRadius(objectPlacement.getVacuumInterpolationRadius());
-                        f.setInterpolator(objectPlacement.getVacuumInterpolationMethod());
-                        f.setStrength(1D);
-                        getMantle().set(xx, 0, zz, new IrisFeaturePositional(xx, zz, f));
-                    }
-
-                    for (IrisFeaturePotential j : objectPlacement.getAddFeatures()) {
-                        if (j.hasZone(rng, xx >> 4, zz >> 4)) {
-                            getMantle().set(xx, 0, zz, new IrisFeaturePositional(xx, zz, j.getZone()));
-                        }
+                for (IrisFeaturePotential j : objectPlacement.getAddFeatures()) {
+                    if (j.hasZone(rng, xx >> 4, zz >> 4)) {
+                        writer.setData(xx, 0, zz, new IrisFeaturePositional(xx, zz, j.getZone()));
                     }
                 }
-            };
-
-            if (objectPlacement.usesFeatures()) {
-                r.run();
-            } else {
-                post.accept(r);
             }
         }
     }
