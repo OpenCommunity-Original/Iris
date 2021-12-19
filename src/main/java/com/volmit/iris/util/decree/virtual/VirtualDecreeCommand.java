@@ -24,10 +24,13 @@ import com.volmit.iris.core.service.CommandSVC;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.collection.KSet;
-import com.volmit.iris.util.decree.*;
+import com.volmit.iris.util.decree.DecreeContext;
+import com.volmit.iris.util.decree.DecreeContextHandler;
+import com.volmit.iris.util.decree.DecreeNode;
+import com.volmit.iris.util.decree.DecreeParameter;
+import com.volmit.iris.util.decree.DecreeParameterHandler;
 import com.volmit.iris.util.decree.annotations.Decree;
 import com.volmit.iris.util.decree.exceptions.DecreeParsingException;
-import com.volmit.iris.util.decree.exceptions.DecreeWhichException;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.plugin.CommandDummy;
@@ -46,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 @Data
 public class VirtualDecreeCommand {
@@ -53,6 +57,15 @@ public class VirtualDecreeCommand {
     private final VirtualDecreeCommand parent;
     private final KList<VirtualDecreeCommand> nodes;
     private final DecreeNode node;
+    String[] gradients = new String[]{
+            "<gradient:#f5bc42:#45b32d>",
+            "<gradient:#1ed43f:#1ecbd4>",
+            "<gradient:#1e2ad4:#821ed4>",
+            "<gradient:#d41ea7:#611ed4>",
+            "<gradient:#1ed473:#1e55d4>",
+            "<gradient:#6ad41e:#9a1ed4>"
+    };
+    private ChronoLatch cl = new ChronoLatch(1000);
 
     private VirtualDecreeCommand(Class<?> type, VirtualDecreeCommand parent, KList<VirtualDecreeCommand> nodes, DecreeNode node) {
         this.parent = parent;
@@ -103,13 +116,11 @@ public class VirtualDecreeCommand {
         return c;
     }
 
-    private ChronoLatch cl = new ChronoLatch(1000);
-
     public void cacheAll() {
         VolmitSender sender = new VolmitSender(new CommandDummy());
 
         if (isNode()) {
-            J.a(() -> sender.sendDecreeHelpNode(this));
+            sender.sendDecreeHelpNode(this);
         }
 
         for (VirtualDecreeCommand j : nodes) {
@@ -150,8 +161,9 @@ public class VirtualDecreeCommand {
             return getNode().getNames();
         }
 
-        KList<String> d = new KList<>();
         Decree dc = getType().getDeclaredAnnotation(Decree.class);
+        KList<String> d = new KList<>();
+        d.add(dc.name());
         for (String i : dc.aliases()) {
             if (i.isEmpty()) {
                 continue;
@@ -160,7 +172,6 @@ public class VirtualDecreeCommand {
             d.add(i);
         }
 
-        d.add(dc.name());
         d.removeDuplicates();
 
         return d;
@@ -178,7 +189,7 @@ public class VirtualDecreeCommand {
     }
 
     private boolean invokeTabComplete(KList<String> args, KList<Integer> skip, KList<String> tabs, String raw) {
-        if (isStudio() && !IrisSettings.get().isStudio()) {
+        if (isStudio() && !IrisSettings.get().getStudio().isStudio()) {
             return false;
         }
 
@@ -276,96 +287,91 @@ public class VirtualDecreeCommand {
         }
     }
 
+    /**
+     * Maps the input a player typed to the parameters of this command
+     * @param sender The sender
+     * @param in The input
+     * @return A map of all the parameter names and their values
+     */
     private KMap<String, Object> map(VolmitSender sender, KList<String> in) {
         KMap<String, Object> data = new KMap<>();
         KSet<Integer> nowhich = new KSet<>();
 
-        for (int ix = 0; ix < in.size(); ix++) {
-            String i = in.get(ix);
+        KList<String> unknownInputs = new KList<>(in.stream().filter(s -> !s.contains("=")).collect(Collectors.toList()));
+        KList<String> knownInputs = new KList<>(in.stream().filter(s -> s.contains("=")).collect(Collectors.toList()));
 
-            if (i == null) {
-                continue;
+        //Loop known inputs
+        for (int x = 0; x < knownInputs.size(); x++) {
+            String stringParam = knownInputs.get(x);
+            int original = in.indexOf(stringParam);
+
+            String[] v = stringParam.split("\\Q=\\E");
+            String key = v[0];
+            String value = v[1];
+            DecreeParameter param = null;
+
+            //Find decree parameter from string param
+            for (DecreeParameter j : getNode().getParameters()) {
+                for (String k : j.getNames()) {
+                    if (k.equalsIgnoreCase(key)) {
+                        param = j;
+                        break;
+                    }
+                }
             }
 
-            if (i.contains("=")) {
-                String[] v = i.split("\\Q=\\E");
-                String key = v[0];
-                String value = v[1];
-                DecreeParameter param = null;
-
+            //If it failed, see if we can find it by checking if the names contain the param
+            if (param == null) {
                 for (DecreeParameter j : getNode().getParameters()) {
                     for (String k : j.getNames()) {
-                        if (k.equalsIgnoreCase(key)) {
+                        if (k.toLowerCase().contains(key.toLowerCase()) || key.toLowerCase().contains(k.toLowerCase())) {
                             param = j;
                             break;
                         }
                     }
                 }
+            }
 
-                if (param == null) {
-                    for (DecreeParameter j : getNode().getParameters()) {
-                        for (String k : j.getNames()) {
-                            if (k.toLowerCase().contains(key.toLowerCase()) || key.toLowerCase().contains(k.toLowerCase())) {
-                                param = j;
-                                break;
-                            }
-                        }
-                    }
-                }
+            //Still failed to find, error them
+            if (param == null) {
+                Iris.debug("Can't find parameter key for " + key + "=" + value + " in " + getPath());
+                sender.sendMessage(C.YELLOW + "Unknown Parameter: " + key);
+                unknownInputs.add(value); //Add the value to the unknowns and see if we can assume it later
+                continue;
+            }
 
-                if (param == null) {
-                    Iris.debug("Can't find parameter key for " + key + "=" + value + " in " + getPath());
-                    sender.sendMessage(C.YELLOW + "Unknown Parameter: " + key);
-                    continue;
-                }
+            key = param.getName();
 
-                key = param.getName();
+            try {
+                data.put(key, param.getHandler().parse(value, nowhich.contains(original))); //Parse and put
+            } catch (DecreeParsingException e) {
+                Iris.debug("Can't parse parameter value for " + key + "=" + value + " in " + getPath() + " using handler " + param.getHandler().getClass().getSimpleName());
+                sender.sendMessage(C.RED + "Cannot convert \"" + value + "\" into a " + param.getType().getSimpleName());
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        //Make a list of decree params that haven't been identified
+        KList<DecreeParameter> decreeParameters = new KList<>(getNode().getParameters().stream().filter(param -> !data.contains(param.getName())).collect(Collectors.toList()));
+
+        //Loop Unknown inputs
+        for (int x = 0; x < unknownInputs.size(); x++) {
+            String stringParam = unknownInputs.get(x);
+            int original = in.indexOf(stringParam);
+            try {
+                DecreeParameter par = decreeParameters.get(x);
 
                 try {
-                    data.put(key, param.getHandler().parse(value, nowhich.contains(ix)));
+                    data.put(par.getName(), par.getHandler().parse(stringParam, nowhich.contains(original)));
                 } catch (DecreeParsingException e) {
-                    Iris.debug("Can't parse parameter value for " + key + "=" + value + " in " + getPath() + " using handler " + param.getHandler().getClass().getSimpleName());
-                    sender.sendMessage(C.RED + "Cannot convert \"" + value + "\" into a " + param.getType().getSimpleName());
+                    Iris.debug("Can't parse parameter value for " + par.getName() + "=" + stringParam + " in " + getPath() + " using handler " + par.getHandler().getClass().getSimpleName());
+                    sender.sendMessage(C.RED + "Cannot convert \"" + stringParam + "\" into a " + par.getType().getSimpleName());
                     e.printStackTrace();
                     return null;
-                } catch (DecreeWhichException e) {
-                    KList<?> validOptions = param.getHandler().getPossibilities(value);
-                    Iris.debug("Found multiple results for " + key + "=" + value + " in " + getPath() + " using the handler " + param.getHandler().getClass().getSimpleName() + " with potential matches [" + validOptions.toString(",") + "]. Asking client to define one");
-                    String update = pickValidOption(sender, validOptions, param.getHandler(), param.getName(), param.getType().getSimpleName());
-
-                    if (update == null) {
-                        return null;
-                    }
-
-                    Iris.debug("Client chose " + update + " for " + key + "=" + value + " (old) in " + getPath());
-                    nowhich.add(ix);
-                    in.set(ix--, update);
                 }
-            } else {
-                try {
-                    DecreeParameter par = getNode().getParameters().get(ix);
-                    try {
-                        data.put(par.getName(), par.getHandler().parse(i, nowhich.contains(ix)));
-                    } catch (DecreeParsingException e) {
-                        Iris.debug("Can't parse parameter value for " + par.getName() + "=" + i + " in " + getPath() + " using handler " + par.getHandler().getClass().getSimpleName());
-                        sender.sendMessage(C.RED + "Cannot convert \"" + i + "\" into a " + par.getType().getSimpleName());
-                        e.printStackTrace();
-                        return null;
-                    } catch (DecreeWhichException e) {
-                        KList<?> validOptions = par.getHandler().getPossibilities(i);
-                        String update = pickValidOption(sender, validOptions, par.getHandler(), par.getName(), par.getType().getSimpleName());
-
-                        if (update == null) {
-                            return null;
-                        }
-
-                        Iris.debug("Client chose " + update + " for " + par.getName() + "=" + i + " (old) in " + getPath());
-                        nowhich.add(ix);
-                        in.set(ix--, update);
-                    }
-                } catch (IndexOutOfBoundsException e) {
-                    sender.sendMessage(C.YELLOW + "Unknown Parameter: " + i + " (" + Form.getNumberSuffixThStRd(ix + 1) + " argument)");
-                }
+            } catch (IndexOutOfBoundsException e) {
+                sender.sendMessage(C.YELLOW + "Unknown Parameter: " + stringParam + " (" + Form.getNumberSuffixThStRd(x + 1) + " argument)");
             }
         }
 
@@ -377,7 +383,7 @@ public class VirtualDecreeCommand {
     }
 
     public boolean invoke(VolmitSender sender, KList<String> args, KList<Integer> skip) {
-        if (isStudio() && !IrisSettings.get().isStudio()) {
+        if (isStudio() && !IrisSettings.get().getStudio().isStudio()) {
             sender.sendMessage(C.RED + "To use Iris Studio Commands, please enable studio in Iris/settings.json (settings auto-reload)");
             return false;
         }
@@ -434,40 +440,31 @@ public class VirtualDecreeCommand {
                     value = i.getDefaultValue();
                 }
             } catch (DecreeParsingException e) {
-                Iris.debug("Can't parse parameter value for " + i.getName() + "=" + i + " in " + getPath() + " using handler " + i.getHandler().getClass().getSimpleName());
-                sender.sendMessage(C.RED + "Cannot convert \"" + i + "\" into a " + i.getType().getSimpleName());
+                Iris.debug("Can't parse parameter value for " + i.getName() + "=" + i.getParam().defaultValue() + " in " + getPath() + " using handler " + i.getHandler().getClass().getSimpleName());
+                sender.sendMessage(C.RED + "Cannot convert \"" + i.getParam().defaultValue() + "\" into a " + i.getType().getSimpleName());
                 return false;
-            } catch (DecreeWhichException e) {
-                KList<?> validOptions = i.getHandler().getPossibilities(i.getParam().defaultValue());
-                String update = pickValidOption(sender, validOptions, i.getHandler(), i.getName(), i.getType().getSimpleName());
-
-                if (update == null) {
-                    return false;
-                }
-
-                Iris.debug("Client chose " + update + " for " + i.getName() + "=" + i + " (old) in " + getPath());
-                value = update;
             }
 
-            if (i.isContextual() && value == null) {
+            if (sender.isPlayer() && i.isContextual() && value == null) {
+                Iris.debug("Contextual!");
                 DecreeContextHandler<?> ch = DecreeContextHandler.contextHandlers.get(i.getType());
 
                 if (ch != null) {
                     value = ch.handle(sender);
 
                     if (value != null) {
-                        Iris.debug("Null Parameter " + i.getName() + " derived a value of " + i.getHandler().toStringForce(value) + " from " + ch.getClass().getSimpleName());
+                        Iris.debug("Parameter \"" + i.getName() + "\" derived a value of \"" + i.getHandler().toStringForce(value) + "\" from " + ch.getClass().getSimpleName());
                     } else {
-                        Iris.debug("Null Parameter " + i.getName() + " could not derive a value from " + ch.getClass().getSimpleName());
+                        Iris.debug("Parameter \"" + i.getName() + "\" could not derive a value from \"" + ch.getClass().getSimpleName());
                     }
                 } else {
-                    Iris.debug("Null Parameter " + i.getName() + " is contextual but has no context handler for " + i.getType().getCanonicalName());
+                    Iris.debug("Parameter \"" + i.getName() + "\" is contextual but has no context handler for \"" + i.getType().getCanonicalName() + "\"");
                 }
             }
 
             if (i.hasDefault() && value == null) {
                 try {
-                    Iris.debug("Null Parameter " + i.getName() + " is using default value " + i.getParam().defaultValue());
+                    Iris.debug("Parameter \"" + i.getName() + "\" is using default value \"" + i.getParam().defaultValue() + "\"");
                     value = i.getDefaultValue();
                 } catch (Throwable e) {
                     e.printStackTrace();
@@ -475,7 +472,8 @@ public class VirtualDecreeCommand {
             }
 
             if (i.isRequired() && value == null) {
-                sender.sendMessage("Missing: " + i.getName() + " (" + i.getType().getSimpleName() + ") as the " + Form.getNumberSuffixThStRd(vm + 1) + " argument.");
+                sender.sendMessage(C.RED + "Missing argument \"" + i.getName() + "\" (" + i.getType().getSimpleName() + ") as the " + Form.getNumberSuffixThStRd(vm + 1) + " argument.");
+                sender.sendDecreeHelpNode(this);
                 return false;
             }
 
@@ -483,6 +481,7 @@ public class VirtualDecreeCommand {
             vm++;
         }
 
+        DecreeContext.touch(sender);
         Runnable rx = () -> {
             try {
                 DecreeContext.touch(sender);
@@ -501,43 +500,6 @@ public class VirtualDecreeCommand {
         }
 
         return true;
-    }
-
-    String[] gradients = new String[]{
-            "<gradient:#f5bc42:#45b32d>",
-            "<gradient:#1ed43f:#1ecbd4>",
-            "<gradient:#1e2ad4:#821ed4>",
-            "<gradient:#d41ea7:#611ed4>",
-            "<gradient:#1ed473:#1e55d4>",
-            "<gradient:#6ad41e:#9a1ed4>"
-    };
-
-    private String pickValidOption(VolmitSender sender, KList<?> validOptions, DecreeParameterHandler<?> handler, String name, String type) {
-        sender.sendHeader("Pick a " + name + " (" + type + ")");
-        sender.sendMessageRaw("<gradient:#1ed497:#b39427>This query will expire in 15 seconds.</gradient>");
-        String password = UUID.randomUUID().toString().replaceAll("\\Q-\\E", "");
-        int m = 0;
-
-        for (String i : validOptions.convert(handler::toStringForce)) {
-            sender.sendMessage("<hover:show_text:'" + gradients[m % gradients.length] + i + "</gradient>'><click:run_command:/irisdecree " + password + " " + i + ">" + "- " + gradients[m % gradients.length] + i + "</gradient></click></hover>");
-            m++;
-        }
-
-        CompletableFuture<String> future = new CompletableFuture<>();
-        Iris.service(CommandSVC.class).post(password, future);
-
-        if (IrisSettings.get().getGeneral().isCommandSounds() && sender.isPlayer()) {
-            (sender.player()).playSound((sender.player()).getLocation(), Sound.BLOCK_AMETHYST_CLUSTER_BREAK, 0.77f, 0.65f);
-            (sender.player()).playSound((sender.player()).getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 0.125f, 1.99f);
-        }
-
-        try {
-            return future.get(15, TimeUnit.SECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-
-        }
-
-        return null;
     }
 
     public KList<VirtualDecreeCommand> matchAllNodes(String in) {

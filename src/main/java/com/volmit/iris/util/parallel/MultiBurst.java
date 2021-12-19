@@ -23,17 +23,23 @@ import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.service.PreservationSVC;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.M;
+import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinWorkerThread;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MultiBurst {
     public static final MultiBurst burst = new MultiBurst();
-    private ExecutorService service;
     private final AtomicLong last;
     private final String name;
     private final int priority;
+    private ExecutorService service;
 
     public MultiBurst() {
         this("Iris", Thread.MIN_PRIORITY);
@@ -146,9 +152,21 @@ public class MultiBurst {
     public void close() {
         if (service != null) {
             service.shutdown();
+            PrecisionStopwatch p = PrecisionStopwatch.start();
             try {
-                while (!service.awaitTermination(10, TimeUnit.SECONDS)) {
+                while (!service.awaitTermination(1, TimeUnit.SECONDS)) {
                     Iris.info("Still waiting to shutdown burster...");
+                    if (p.getMilliseconds() > 7000) {
+                        Iris.warn("Forcing Shutdown...");
+
+                        try {
+                            service.shutdownNow();
+                        } catch (Throwable e) {
+
+                        }
+
+                        break;
+                    }
                 }
             } catch (Throwable e) {
                 e.printStackTrace();

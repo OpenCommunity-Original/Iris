@@ -33,38 +33,144 @@ import java.io.IOException;
 @Data
 public class IrisSettings {
     public static transient IrisSettings settings;
-    private IrisSettingsCache cache = new IrisSettingsCache();
-    private IrisSettingsConcurrency concurrency = new IrisSettingsConcurrency();
-    private IrisSettingsParallax parallax = new IrisSettingsParallax();
     private IrisSettingsGeneral general = new IrisSettingsGeneral();
+    private IrisSettingsWorld world = new IrisSettingsWorld();
     private IrisSettingsGUI gui = new IrisSettingsGUI();
+    private IrisSettingsAutoconfiguration autoConfiguration = new IrisSettingsAutoconfiguration();
     private IrisSettingsGenerator generator = new IrisSettingsGenerator();
+    private IrisSettingsConcurrency concurrency = new IrisSettingsConcurrency();
     private IrisSettingsStudio studio = new IrisSettingsStudio();
-    public int configurationVersion = 3;
-
-    public boolean isStudio() {
-        return getStudio().isStudio();
-    }
-
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    public boolean isUseServerLaunchedGuis() {
-        return getGui().isUseServerLaunchedGuis();
-    }
-
-    public long getParallaxRegionEvictionMS() {
-        return getParallax().getParallaxRegionEvictionMS();
-    }
-
-    public static int getPriority(int c) {
-        return Math.max(Math.min(c, Thread.MAX_PRIORITY), Thread.MIN_PRIORITY);
-    }
+    private IrisSettingsPerformance performance = new IrisSettingsPerformance();
 
     public static int getThreadCount(int c) {
-        if (c < 2 && c >= 0) {
-            return 2;
+        return switch (c) {
+            case -1, -2, -4 -> Runtime.getRuntime().availableProcessors() / -c;
+            case 0, 1, 2 -> 1;
+            default -> Math.max(c, 2);
+        };
+    }
+
+    @Data
+    public static class IrisSettingsAutoconfiguration {
+        public boolean configureSpigotTimeoutTime = true;
+        public boolean configurePaperWatchdogDelay = true;
+        public boolean autoRestartOnCustomBiomeInstall = true;
+    }
+
+    @Data
+    public static class IrisAsyncTeleport {
+        public boolean enabled = false;
+        public int loadViewDistance = 2;
+        public boolean urgent = false;
+    }
+
+    @Data
+    public static class IrisSettingsWorld {
+        public IrisAsyncTeleport asyncTeleport = new IrisAsyncTeleport();
+        public boolean postLoadBlockUpdates = true;
+        public boolean forcePersistEntities = true;
+        public boolean anbientEntitySpawningSystem = true;
+        public long asyncTickIntervalMS = 700;
+        public double targetSpawnEntitiesPerChunk = 0.95;
+        public boolean markerEntitySpawningSystem = true;
+        public boolean effectSystem = true;
+    }
+
+    @Data
+    public static class IrisSettingsConcurrency {
+        public int parallelism = -1;
+    }
+
+    @Data
+    public static class IrisSettingsPerformance {
+        public boolean trimMantleInStudio = false;
+        public int mantleKeepAlive = 30;
+        public int cacheSize = 4_096;
+        public int resourceLoaderCacheSize = 1_024;
+        public int objectLoaderCacheSize = 4_096;
+        public int scriptLoaderCacheSize = 512;
+    }
+
+    @Data
+    public static class IrisSettingsGeneral {
+        public boolean commandSounds = true;
+        public boolean debug = false;
+        public boolean disableNMS = false;
+        public boolean pluginMetrics = true;
+        public boolean splashLogoStartup = true;
+        public boolean useConsoleCustomColors = true;
+        public boolean useCustomColorsIngame = true;
+        public String forceMainWorld = "";
+        public int spinh = -20;
+        public int spins = 7;
+        public int spinb = 8;
+
+        @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+        public boolean canUseCustomColors(VolmitSender volmitSender) {
+            return volmitSender.isPlayer() ? useCustomColorsIngame : useConsoleCustomColors;
+        }
+    }
+
+    @Data
+    public static class IrisSettingsGUI {
+        public boolean useServerLaunchedGuis = true;
+        public boolean maximumPregenGuiFPS = false;
+    }
+
+    @Data
+    public static class IrisSettingsGenerator {
+        public String defaultWorldType = "overworld";
+        public boolean headlessPregeneration = true;
+        public int maxBiomeChildDepth = 4;
+        public boolean preventLeafDecay = true;
+    }
+
+    @Data
+    public static class IrisSettingsStudio {
+        public boolean studio = true;
+        public boolean openVSCode = true;
+        public boolean disableTimeAndWeather = true;
+        public boolean autoStartDefaultStudio = false;
+    }
+
+    public static IrisSettings get() {
+        if (settings != null) {
+            return settings;
         }
 
-        return Math.max(2, c < 0 ? Runtime.getRuntime().availableProcessors() / -c : c);
+        settings = new IrisSettings();
+
+        File s = Iris.instance.getDataFile("settings.json");
+
+        if (!s.exists()) {
+            try {
+                IO.writeAll(s, new JSONObject(new Gson().toJson(settings)).toString(4));
+            } catch (JSONException | IOException e) {
+                e.printStackTrace();
+                Iris.reportError(e);
+            }
+        } else {
+            try {
+                String ss = IO.readAll(s);
+                settings = new Gson().fromJson(ss, IrisSettings.class);
+                try {
+                    IO.writeAll(s, new JSONObject(new Gson().toJson(settings)).toString(4));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } catch (Throwable ee) {
+                Iris.reportError(ee);
+                Iris.error("Configuration Error in settings.json! " + ee.getClass().getSimpleName() + ": " + ee.getMessage());
+            }
+        }
+
+        return settings;
+    }
+
+    public static void invalidate() {
+        synchronized (settings) {
+            settings = null;
+        }
     }
 
     public void forceSave() {
@@ -75,120 +181,6 @@ public class IrisSettings {
         } catch (JSONException | IOException e) {
             e.printStackTrace();
             Iris.reportError(e);
-        }
-    }
-
-    @Data
-    public static class IrisSettingsCache {
-        public int complexCacheSize = 131072;
-    }
-
-    @Data
-    public static class IrisSettingsConcurrency {
-        public int parallelism = -1;
-    }
-
-    @Data
-    public static class IrisSettingsParallax {
-        public int parallaxRegionEvictionMS = 15000;
-        public int parallaxChunkEvictionMS = 5000;
-    }
-
-    @Data
-    public static class IrisSettingsGeneral {
-        public boolean commandSounds = true;
-        public boolean debug = false;
-        public boolean ignoreWorldEdit = false;
-        public boolean disableNMS = false;
-        public boolean keepProductionOnReload = false;
-        public boolean pluginMetrics = true;
-        public boolean splashLogoStartup = true;
-        public boolean autoStartDefaultStudio = false;
-        public boolean useConsoleCustomColors = true;
-        public boolean useCustomColorsIngame = true;
-        public String forceMainWorld = "";
-        public int spinh = -20;
-        public int spins = 7;
-        public int spinb = 8;
-
-        public boolean canUseCustomColors(VolmitSender volmitSender) {
-            return (volmitSender.isPlayer() && useCustomColorsIngame) || (!volmitSender.isPlayer() && useConsoleCustomColors);
-        }
-    }
-
-    @Data
-    public static class IrisSettingsGUI {
-        public boolean useServerLaunchedGuis = true;
-        public boolean maximumPregenGuiFPS = false;
-        public boolean localPregenGui = true;
-    }
-
-    @Data
-    public static class IrisSettingsGenerator {
-        public String defaultWorldType = "overworld";
-        public boolean headlessPregeneration = false;
-        public boolean systemEffects = true;
-        public int maxBiomeChildDepth = 4;
-        public boolean preventLeafDecay = true;
-    }
-
-    @Data
-    public static class IrisSettingsStudio {
-        public boolean studio = true;
-        public boolean openVSCode = true;
-        public boolean disableTimeAndWeather = true;
-    }
-
-    public static IrisSettings get() {
-        if (settings != null) {
-            return settings;
-        }
-
-        IrisSettings defaults = new IrisSettings();
-        JSONObject def = new JSONObject(new Gson().toJson(defaults));
-        if (settings == null) {
-            settings = new IrisSettings();
-
-            File s = Iris.instance.getDataFile("settings.json");
-
-            if (!s.exists()) {
-                try {
-                    IO.writeAll(s, new JSONObject(new Gson().toJson(settings)).toString(4));
-                } catch (JSONException | IOException e) {
-                    e.printStackTrace();
-                    Iris.reportError(e);
-                }
-            } else {
-                try {
-                    String ss = IO.readAll(s);
-                    settings = new Gson().fromJson(ss, IrisSettings.class);
-                    try {
-                        IO.writeAll(s, new JSONObject(new Gson().toJson(settings)).toString(4));
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                } catch (Throwable ee) {
-                    Iris.reportError(ee);
-                    Iris.error("Configuration Error in settings.json! " + ee.getClass().getSimpleName() + ": " + ee.getMessage());
-                }
-            }
-
-            if (!s.exists()) {
-                try {
-                    IO.writeAll(s, new JSONObject(new Gson().toJson(settings)).toString(4));
-                } catch (JSONException | IOException e) {
-                    Iris.reportError(e);
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        return settings;
-    }
-
-    public static void invalidate() {
-        synchronized (settings) {
-            settings = null;
         }
     }
 }

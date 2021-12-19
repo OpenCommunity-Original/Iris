@@ -22,14 +22,28 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.service.StudioSVC;
 import com.volmit.iris.core.tools.IrisToolbelt;
+import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.platform.PlatformChunkGenerator;
+import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.decree.DecreeContext;
 import com.volmit.iris.util.decree.DecreeExecutor;
 import com.volmit.iris.util.decree.DecreeOrigin;
 import com.volmit.iris.util.decree.annotations.Decree;
 import com.volmit.iris.util.decree.annotations.Param;
 import com.volmit.iris.util.format.C;
+import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.parallel.BurstExecutor;
+import com.volmit.iris.util.parallel.MultiBurst;
+import com.volmit.iris.util.plugin.VolmitSender;
+import com.volmit.iris.util.scheduling.J;
+import com.volmit.iris.util.scheduling.jobs.QueueJob;
+import org.bukkit.Chunk;
+import org.bukkit.World;
 
 import java.io.File;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 @Decree(name = "iris", aliases = {"ir", "irs"}, description = "Basic Command")
 public class CommandIris implements DecreeExecutor {
@@ -37,9 +51,11 @@ public class CommandIris implements DecreeExecutor {
     private CommandPregen pregen;
     private CommandSettings settings;
     private CommandObject object;
+    private CommandJigsaw jigsaw;
     private CommandWhat what;
+    private CommandFind find;
 
-    @Decree(description = "Create a new world", aliases = "+")
+    @Decree(description = "Create a new world", aliases = {"+", "c"})
     public void create(
             @Param(aliases = "world-name", description = "The name of the world to create")
                     String name,
@@ -58,6 +74,8 @@ public class CommandIris implements DecreeExecutor {
             sender().sendMessage(C.RED + "That folder already exists!");
             return;
         }
+
+        sender().sendMessage(C.RED + "You should not be using this command to create new worlds. Instead, use /mvc " + name + " NORMAL -g Iris:" + type.getName());
 
         try {
             IrisToolbelt.createWorld()
@@ -130,6 +148,7 @@ public class CommandIris implements DecreeExecutor {
     ) {
         boolean to = on == null ? !IrisSettings.get().getGeneral().isDebug() : on;
         IrisSettings.get().getGeneral().setDebug(to);
+        IrisSettings.get().forceSave();
         sender().sendMessage(C.GREEN + "Set debug to: " + to);
     }
 
@@ -144,6 +163,7 @@ public class CommandIris implements DecreeExecutor {
             @Param(name = "overwrite", description = "Whether or not to overwrite the pack with the downloaded one", aliases = "force", defaultValue = "false")
                     boolean overwrite
     ) {
+        branch = pack.equals("overworld") ? "stable" : branch;
         sender().sendMessage(C.GREEN + "Downloading pack: " + pack + "/" + branch + (trim ? " trimmed" : "") + (overwrite ? " overwriting" : ""));
         Iris.service(StudioSVC.class).downloadSearch(sender(), "IrisDimensions/" + pack + "/" + branch, trim, overwrite);
     }
@@ -163,5 +183,112 @@ public class CommandIris implements DecreeExecutor {
         IrisSettings.invalidate();
         IrisSettings.get();
         sender().sendMessage(C.GREEN + "Hotloaded settings");
+    }
+
+    @Decree(name = "regen", description = "Regenerate nearby chunks.", aliases = "rg", sync = true, origin = DecreeOrigin.PLAYER)
+    public void regen(
+            @Param(name = "radius", description = "The radius of nearby cunks", defaultValue = "5")
+                    int radius
+    ) {
+        if (IrisToolbelt.isIrisWorld(player().getWorld())) {
+            VolmitSender sender = sender();
+            J.a(() -> {
+                DecreeContext.touch(sender);
+                PlatformChunkGenerator plat = IrisToolbelt.access(player().getWorld());
+                Engine engine = plat.getEngine();
+                try {
+                    Chunk cx = player().getLocation().getChunk();
+                    KList<Runnable> js = new KList<>();
+                    BurstExecutor b = MultiBurst.burst.burst();
+                    b.setMulticore(false);
+                    int rad = engine.getMantle().getRealRadius();
+                    for (int i = -(radius + rad); i <= radius + rad; i++) {
+                        for (int j = -(radius + rad); j <= radius + rad; j++) {
+                            engine.getMantle().getMantle().deleteChunk(i + cx.getX(), j + cx.getZ());
+                        }
+                    }
+
+                    for (int i = -radius; i <= radius; i++) {
+                        for (int j = -radius; j <= radius; j++) {
+                            int finalJ = j;
+                            int finalI = i;
+                            b.queue(() -> plat.injectChunkReplacement(player().getWorld(), finalI + cx.getX(), finalJ + cx.getZ(), (f) -> {
+                                synchronized (js) {
+                                    js.add(f);
+                                }
+                            }));
+                        }
+                    }
+
+                    b.complete();
+                    sender().sendMessage(C.GREEN + "Regenerating " + Form.f(js.size()) + " Sections");
+                    QueueJob<Runnable> r = new QueueJob<>() {
+                        final KList<Future<?>> futures = new KList<>();
+
+                        @Override
+                        public void execute(Runnable runnable) {
+                            futures.add(J.sfut(runnable));
+
+                            if (futures.size() > 64) {
+                                while (futures.isNotEmpty()) {
+                                    try {
+                                        futures.remove(0).get();
+                                    } catch (InterruptedException | ExecutionException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                            }
+                        }
+
+                        @Override
+                        public String getName() {
+                            return "Regenerating";
+                        }
+                    };
+                    r.queue(js);
+                    r.execute(sender());
+                } catch (Throwable e) {
+                    sender().sendMessage("Unable to parse view-distance");
+                }
+            });
+        } else {
+            sender().sendMessage(C.RED + "You must be in an Iris World to use regen!");
+        }
+    }
+
+    @Decree(description = "Update the pack of a world (UNSAFE!)", name = "^world", aliases = "update-world")
+    public void updateWorld(
+            @Param(description = "The world to update", contextual = true)
+                    World world,
+            @Param(description = "The pack to install into the world", contextual = true, aliases = "dimension")
+                    IrisDimension pack,
+            @Param(description = "Make sure to make a backup & read the warnings first!", defaultValue = "false", aliases = "c")
+                    boolean confirm,
+            @Param(description = "Should Iris download the pack again for you", defaultValue = "false", name = "fresh-download", aliases = {"fresh", "new"})
+                    boolean freshDownload
+    ) {
+        if (!confirm) {
+            sender().sendMessage(new String[]{
+                    C.RED + "You should always make a backup before using this",
+                    C.YELLOW + "Issues caused by this can be, but are not limited to:",
+                    C.YELLOW + " - Broken chunks (cut-offs) between old and new chunks (before & after the update)",
+                    C.YELLOW + " - Regenerated chunks that do not fit in with the old chunks",
+                    C.YELLOW + " - Structures not spawning again when regenerating",
+                    C.YELLOW + " - Caves not lining up",
+                    C.YELLOW + " - Terrain layers not lining up",
+                    C.RED + "Now that you are aware of the risks, and have made a back-up:",
+                    C.RED + "/iris ^world <world> <pack> confirm=true"
+            });
+            return;
+        }
+
+        File folder = world.getWorldFolder();
+        folder.mkdirs();
+
+        if (freshDownload) {
+            Iris.service(StudioSVC.class).downloadSearch(sender(), pack.getLoadKey(), false, true);
+        }
+
+        Iris.service(StudioSVC.class).installIntoWorld(sender(), pack.getLoadKey(), folder);
     }
 }

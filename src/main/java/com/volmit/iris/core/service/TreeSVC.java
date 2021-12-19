@@ -21,7 +21,16 @@ package com.volmit.iris.core.service;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.tools.IrisToolbelt;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.framework.Engine;
+import com.volmit.iris.engine.object.IObjectPlacer;
+import com.volmit.iris.engine.object.IrisBiome;
+import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.object.IrisObject;
+import com.volmit.iris.engine.object.IrisObjectPlacement;
+import com.volmit.iris.engine.object.IrisRegion;
+import com.volmit.iris.engine.object.IrisTreeModes;
+import com.volmit.iris.engine.object.IrisTreeSize;
+import com.volmit.iris.engine.object.TileData;
 import com.volmit.iris.engine.platform.PlatformChunkGenerator;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
@@ -30,7 +39,12 @@ import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.plugin.IrisService;
 import com.volmit.iris.util.scheduling.J;
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.HeightMap;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.TreeType;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.TileState;
@@ -75,7 +89,7 @@ public class TreeSVC implements IrisService {
         Iris.debug(this.getClass().getName() + " received a structure grow event");
 
         if (!IrisToolbelt.isIrisWorld(event.getWorld())) {
-            Iris.debug(this.getClass().getName() + " passed it off to vanilla since not an Iris world");
+            Iris.debug(this.getClass().getName() + " passed grow event off to vanilla since not an Iris world");
             return;
         }
 
@@ -86,7 +100,23 @@ public class TreeSVC implements IrisService {
             return;
         }
 
-        if (!worldAccess.getEngine().getDimension().getTreeSettings().isEnabled()) {
+        Engine engine = worldAccess.getEngine();
+
+        if (engine == null) {
+            Iris.debug(this.getClass().getName() + " passed it off to vanilla because could not get Engine for this world");
+            Iris.reportError(new NullPointerException(event.getWorld().getName() + " could not be accessed despite being an Iris world"));
+            return;
+        }
+
+        IrisDimension dimension = engine.getDimension();
+
+        if (dimension == null) {
+            Iris.debug(this.getClass().getName() + " passed it off to vanilla because could not get Dimension for this world");
+            Iris.reportError(new NullPointerException(event.getWorld().getName() + " could not be accessed despite being an Iris world"));
+            return;
+        }
+
+        if (!dimension.getTreeSettings().isEnabled()) {
             Iris.debug(this.getClass().getName() + " cancelled because tree overrides are disabled");
             return;
         }
@@ -108,6 +138,7 @@ public class TreeSVC implements IrisService {
         List<BlockState> blockStateList = new KList<>();
         KMap<Location, BlockData> dataCache = new KMap<>();
         // TODO: REAL CLASSES!!!!
+
         IObjectPlacer placer = new IObjectPlacer() {
 
             @Override
@@ -167,6 +198,11 @@ public class TreeSVC implements IrisService {
             @Override
             public void setTile(int xx, int yy, int zz, TileData<? extends TileState> tile) {
 
+            }
+
+            @Override
+            public Engine getEngine() {
+                return engine;
             }
         };
 

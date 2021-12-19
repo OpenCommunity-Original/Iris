@@ -23,27 +23,32 @@ import com.volmit.iris.core.nms.INMS;
 import com.volmit.iris.util.nbt.io.NBTDeserializer;
 import com.volmit.iris.util.nbt.io.NBTSerializer;
 import com.volmit.iris.util.nbt.io.NamedTag;
-import com.volmit.iris.util.nbt.mca.palette.BiomeContainer;
+import com.volmit.iris.util.nbt.mca.palette.MCABiomeContainer;
 import com.volmit.iris.util.nbt.tag.CompoundTag;
 import com.volmit.iris.util.nbt.tag.ListTag;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import static com.volmit.iris.util.nbt.mca.LoadFlags.*;
 
 public class Chunk {
     public static final int DEFAULT_DATA_VERSION = 2730;
+    private final AtomicReferenceArray<Section> sections = new AtomicReferenceArray<>(16);
     private boolean partial;
     private int lastMCAUpdate;
     private CompoundTag data;
     private int dataVersion;
     private long lastUpdate;
     private long inhabitedTime;
-    private BiomeContainer biomes;
+    private MCABiomeContainer biomes;
     private CompoundTag heightMaps;
     private CompoundTag carvingMasks;
-    private final AtomicReferenceArray<Section> sections = new AtomicReferenceArray<>(16);
     private ListTag<CompoundTag> entities;
     private ListTag<CompoundTag> tileEntities;
     private ListTag<CompoundTag> tileTicks;
@@ -68,6 +73,23 @@ public class Chunk {
         this.data = data;
         initReferences(ALL_DATA);
         setStatus("full");
+    }
+
+    public static Chunk newChunk() {
+        Chunk c = new Chunk(0);
+        c.dataVersion = DEFAULT_DATA_VERSION;
+        c.data = new CompoundTag();
+        c.biomes = INMS.get().newBiomeContainer(0, 256);
+        c.data.put("Level", defaultLevel());
+        c.status = "full";
+        return c;
+    }
+
+    private static CompoundTag defaultLevel() {
+        CompoundTag level = new CompoundTag();
+        level.putString("Status", "full");
+        level.putString("Generator", "Iris Headless " + Iris.instance.getDescription().getVersion());
+        return level;
     }
 
     private void initReferences(long loadFlags) {
@@ -231,7 +253,13 @@ public class Chunk {
     }
 
     public CompoundTag getBlockStateAt(int blockX, int blockY, int blockZ) {
-        Section section = sections.get(MCAUtil.blockToChunk(blockY));
+        int s = MCAUtil.blockToChunk(blockY);
+
+        if (sections.length() <= s) {
+            return null;
+        }
+
+        Section section = sections.get(s);
         if (section == null) {
             return null;
         }
@@ -252,6 +280,11 @@ public class Chunk {
      */
     public void setBlockStateAt(int blockX, int blockY, int blockZ, CompoundTag state, boolean cleanup) {
         int sectionIndex = MCAUtil.blockToChunk(blockY);
+
+        if (sections.length() <= sectionIndex) {
+            return;
+        }
+
         Section section = sections.get(sectionIndex);
         if (section == null) {
             section = Section.newSection();
@@ -548,23 +581,6 @@ public class Chunk {
                 section.cleanupPaletteAndBlockStates();
             }
         }
-    }
-
-    public static Chunk newChunk() {
-        Chunk c = new Chunk(0);
-        c.dataVersion = DEFAULT_DATA_VERSION;
-        c.data = new CompoundTag();
-        c.biomes = INMS.get().newBiomeContainer(0, 256);
-        c.data.put("Level", defaultLevel());
-        c.status = "full";
-        return c;
-    }
-
-    private static CompoundTag defaultLevel() {
-        CompoundTag level = new CompoundTag();
-        level.putString("Status", "full");
-        level.putString("Generator", "Iris Headless " + Iris.instance.getDescription().getVersion());
-        return level;
     }
 
     public CompoundTag updateHandle(int xPos, int zPos) {

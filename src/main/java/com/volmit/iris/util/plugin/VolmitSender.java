@@ -58,9 +58,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author cyberpwn
  */
 public class VolmitSender implements CommandSender {
+    @Getter
+    private static final KMap<String, String> helpCache = new KMap<>();
     private final CommandSender s;
     private String tag;
-
     @Getter
     @Setter
     private String command;
@@ -80,13 +81,33 @@ public class VolmitSender implements CommandSender {
         this.s = s;
     }
 
-    /**
-     * Set a command tag (prefix for sendMessage)
-     *
-     * @param tag the tag
-     */
-    public void setTag(String tag) {
-        this.tag = tag;
+    public static long getTick() {
+        return M.ms() / 16;
+    }
+
+    public static String pulse(String colorA, String colorB, double speed) {
+        return "<gradient:" + colorA + ":" + colorB + ":" + pulse(speed) + ">";
+    }
+
+    public static String pulse(double speed) {
+        return Form.f(invertSpread((((getTick() * 15D * speed) % 1000D) / 1000D)), 3).replaceAll("\\Q,\\E", ".").replaceAll("\\Q?\\E", "-");
+    }
+
+    public static double invertSpread(double v) {
+        return ((1D - v) * 2D) - 1D;
+    }
+
+    public static <T> KList<T> paginate(KList<T> all, int linesPerPage, int page, AtomicBoolean hasNext) {
+        int totalPages = (int) Math.ceil((double) all.size() / linesPerPage);
+        page = page < 0 ? 0 : page >= totalPages ? totalPages - 1 : page;
+        hasNext.set(page < totalPages - 1);
+        KList<T> d = new KList<>();
+
+        for (int i = linesPerPage * page; i < Math.min(all.size(), linesPerPage * (page + 1)); i++) {
+            d.add(all.get(i));
+        }
+
+        return d;
     }
 
     /**
@@ -96,6 +117,15 @@ public class VolmitSender implements CommandSender {
      */
     public String getTag() {
         return tag;
+    }
+
+    /**
+     * Set a command tag (prefix for sendMessage)
+     *
+     * @param tag the tag
+     */
+    public void setTag(String tag) {
+        this.tag = tag;
     }
 
     /**
@@ -145,12 +175,10 @@ public class VolmitSender implements CommandSender {
         return s.hasPermission(perm);
     }
 
-
     @Override
     public PermissionAttachment addAttachment(Plugin plugin, String name, boolean value) {
         return s.addAttachment(plugin, name, value);
     }
-
 
     @Override
     public PermissionAttachment addAttachment(Plugin plugin) {
@@ -176,7 +204,6 @@ public class VolmitSender implements CommandSender {
     public void recalculatePermissions() {
         s.recalculatePermissions();
     }
-
 
     @Override
     public Set<PermissionAttachmentInfo> getEffectivePermissions() {
@@ -204,10 +231,6 @@ public class VolmitSender implements CommandSender {
                 Title.Times.of(Duration.ofMillis(i), Duration.ofMillis(s), Duration.ofMillis(o))));
     }
 
-    public static long getTick() {
-        return M.ms() / 16;
-    }
-
     public void sendProgress(double percent, String thing) {
         if (percent < 0) {
             int l = 44;
@@ -220,18 +243,6 @@ public class VolmitSender implements CommandSender {
             sendTitle(C.IRIS + thing + " " + C.BLUE + "<font:minecraft:uniform>" + Form.pc(percent, 0), 0, 500, 250);
             sendActionNoProcessing("" + "" + pulse("#00ff80", "#00373d", 1D) + "<underlined> " + Form.repeat(" ", g) + "<reset>" + Form.repeat(" ", l - g));
         }
-    }
-
-    public static String pulse(String colorA, String colorB, double speed) {
-        return "<gradient:" + colorA + ":" + colorB + ":" + pulse(speed) + ">";
-    }
-
-    public static String pulse(double speed) {
-        return Form.f(invertSpread((((getTick() * 15D * speed) % 1000D) / 1000D)), 3).replaceAll("\\Q,\\E", ".").replaceAll("\\Q?\\E", "-");
-    }
-
-    public static double invertSpread(double v) {
-        return ((1D - v) * 2D) - 1D;
     }
 
     public void sendAction(String action) {
@@ -315,8 +326,13 @@ public class VolmitSender implements CommandSender {
             return;
         }
 
+        if ((!IrisSettings.get().getGeneral().isUseCustomColorsIngame() && s instanceof Player) || !IrisSettings.get().getGeneral().isUseConsoleCustomColors()) {
+            s.sendMessage(C.translateAlternateColorCodes('&', getTag() + message));
+            return;
+        }
+
         if (message.contains("<NOMINI>")) {
-            s.sendMessage(message.replaceAll("\\Q<NOMINI>\\E", ""));
+            s.sendMessage(C.translateAlternateColorCodes('&', getTag() + message.replaceAll("\\Q<NOMINI>\\E", "")));
             return;
         }
 
@@ -337,6 +353,11 @@ public class VolmitSender implements CommandSender {
 
     public void sendMessageRaw(String message) {
         if (s instanceof CommandDummy) {
+            return;
+        }
+
+        if ((!IrisSettings.get().getGeneral().isUseCustomColorsIngame() && s instanceof Player) || !IrisSettings.get().getGeneral().isUseConsoleCustomColors()) {
+            s.sendMessage(C.translateAlternateColorCodes('&', message));
             return;
         }
 
@@ -372,18 +393,15 @@ public class VolmitSender implements CommandSender {
         sendMessage(messages);
     }
 
-
     @Override
     public Server getServer() {
         return s.getServer();
     }
 
-
     @Override
     public String getName() {
         return s.getName();
     }
-
 
     @Override
     public Spigot spigot() {
@@ -412,7 +430,6 @@ public class VolmitSender implements CommandSender {
         return m.removeDuplicates().convert((iff) -> iff.replaceAll("\\Q  \\E", " ")).toString("\n");
     }
 
-
     public void sendHeader(String name, int overrideLength) {
         int len = overrideLength;
         int h = name.length() + 2;
@@ -433,23 +450,8 @@ public class VolmitSender implements CommandSender {
         sendHeader(name, 44);
     }
 
-
     public void sendDecreeHelp(VirtualDecreeCommand v) {
         sendDecreeHelp(v, 0);
-    }
-
-
-    public static <T> KList<T> paginate(KList<T> all, int linesPerPage, int page, AtomicBoolean hasNext) {
-        int totalPages = (int) Math.ceil((double) all.size() / linesPerPage);
-        page = page < 0 ? 0 : page >= totalPages ? totalPages - 1 : page;
-        hasNext.set(page < totalPages - 1);
-        KList<T> d = new KList<>();
-
-        for (int i = linesPerPage * page; i < Math.min(all.size(), linesPerPage * (page + 1)); i++) {
-            d.add(all.get(i));
-        }
-
-        return d;
     }
 
     public void sendDecreeHelp(VirtualDecreeCommand v, int page) {
@@ -495,16 +497,9 @@ public class VolmitSender implements CommandSender {
         }
     }
 
-    @Getter
-    private static final KMap<String, String> helpCache = new KMap<>();
-
     public void sendDecreeHelpNode(VirtualDecreeCommand i) {
         if (isPlayer() || s instanceof CommandDummy) {
-            sendMessageRaw(helpCache.compute(i.getPath(), (k, v) -> {
-                if (v != null) {
-                    return v;
-                }
-
+            sendMessageRaw(helpCache.computeIfAbsent(i.getPath(), (k) -> {
                 String newline = "<reset>\n";
 
                 /// Command
@@ -544,30 +539,27 @@ public class VolmitSender implements CommandSender {
                         String nHoverTitle = p.getNames().convert((ff) -> "<#d665f0>" + ff).toString(", ");
                         String nDescription = "<#3fe05a>✎ <#6ad97d><font:minecraft:uniform>" + p.getDescription();
                         String nUsage;
-                        String context = "";
-                        if (p.isRequired()) {
+                        String fullTitle;
+                        Iris.debug("Contextual: " + p.isContextual() + " / player: " + isPlayer());
+                        if (p.isContextual() && (isPlayer() || s instanceof CommandDummy)) {
+                            fullTitle = "<#ffcc00>[" + nTitle + "<#ffcc00>] ";
+                            nUsage = "<#ff9900>➱ <#ffcc00><font:minecraft:uniform>The value may be derived from environment context.";
+                        } else if (p.isRequired()) {
+                            fullTitle = "<red>[" + nTitle + "<red>] ";
                             nUsage = "<#db4321>⚠ <#faa796><font:minecraft:uniform>This parameter is required.";
                         } else if (p.hasDefault()) {
+                            fullTitle = "<#4f4f4f>⊰" + nTitle + "<#4f4f4f>⊱";
                             nUsage = "<#2181db>✔ <#78dcf0><font:minecraft:uniform>Defaults to \"" + p.getParam().defaultValue() + "\" if undefined.";
                         } else {
+                            fullTitle = "<#4f4f4f>⊰" + nTitle + "<#4f4f4f>⊱";
                             nUsage = "<#a73abd>✔ <#78dcf0><font:minecraft:uniform>This parameter is optional.";
                         }
-                        if (p.isContextual()) {
-                            context = "<#ff9900>➱ <#ffcc00><font:minecraft:uniform>The value may be derived from environment context" + newline;
-                        }
-                        String type = "<#cc00ff>✢ <#ff33cc><font:minecraft:uniform>This parameter is of type " + p.getType().getSimpleName();
-                        String fullTitle;
-                        if (p.isRequired()) {
-                            fullTitle = "<red>[" + nTitle + "<red>] ";
-                        } else {
-                            fullTitle = "<#4f4f4f>⊰" + nTitle + "<#4f4f4f>⊱";
-                        }
+                        String type = "<#cc00ff>✢ <#ff33cc><font:minecraft:uniform>This parameter is of type " + p.getType().getSimpleName() + ".";
 
                         nodes
                                 .append("<hover:show_text:'")
                                 .append(nHoverTitle).append(newline)
                                 .append(nDescription).append(newline)
-                                .append(context)
                                 .append(nUsage).append(newline)
                                 .append(type)
                                 .append("'>")

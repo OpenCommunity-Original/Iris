@@ -19,9 +19,14 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.annotations.*;
+import com.volmit.iris.engine.object.annotations.ArrayType;
+import com.volmit.iris.engine.object.annotations.Desc;
+import com.volmit.iris.engine.object.annotations.RegistryListResource;
+import com.volmit.iris.engine.object.annotations.RegistryListSpecialEntity;
+import com.volmit.iris.engine.object.annotations.Required;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.json.JSONObject;
@@ -36,10 +41,20 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.attribute.Attributable;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Ageable;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
+import org.bukkit.entity.Panda;
 import org.bukkit.entity.Panda.Gene;
+import org.bukkit.entity.Villager;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.loot.LootContext;
@@ -49,6 +64,7 @@ import org.bukkit.util.Vector;
 
 import java.util.Collection;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -161,6 +177,10 @@ public class IrisEntity extends IrisRegistrant {
     @RegistryListResource(IrisScript.class)
     private KList<String> postSpawnScripts = new KList<>();
 
+    @ArrayType(min = 1, type = IrisCommand.class)
+    @Desc("Run raw commands when this entity is spawned. Use {x}, {y}, and {z} for location. /summon pig {x} {y} {z}")
+    private KList<IrisCommand> rawCommands = new KList<>();
+
     public Entity spawn(Engine gen, Location at) {
         return spawn(gen, at, new RNG(at.hashCode()));
     }
@@ -169,12 +189,22 @@ public class IrisEntity extends IrisRegistrant {
         if (!Chunks.isSafe(at)) {
             return null;
         }
-
         if (isSpawnEffectRiseOutOfGround()) {
-            Location b = at.clone();
-            double sy = b.getY() - 5;
-            Location start = new Location(b.getWorld(), b.getX(), sy, b.getZ());
-            at = start;
+            AtomicReference<Location> f = new AtomicReference<>(at);
+            try {
+                J.sfut(() -> {
+                    if (Chunks.hasPlayersNearby(f.get())) {
+                        Location b = f.get().clone();
+                        Location start = new Location(b.getWorld(), b.getX(), b.getY() - 5, b.getZ());
+                        f.set(start);
+                    }
+                }).get();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
+            at = f.get();
         }
 
         Entity ee = doSpawn(at);
@@ -206,7 +236,7 @@ public class IrisEntity extends IrisRegistrant {
         e.setGravity(isGravity());
         e.setInvulnerable(isInvulnerable());
         e.setSilent(isSilent());
-        e.setPersistent(isKeepEntity());
+        e.setPersistent(isKeepEntity() || IrisSettings.get().getWorld().isForcePersistEntities());
 
         int gg = 0;
         for (IrisEntity i : passengers) {
@@ -332,7 +362,13 @@ public class IrisEntity extends IrisRegistrant {
             }
         }
 
+        if (rawCommands.isNotEmpty()) {
+            final Location fat = at;
+            rawCommands.forEach(r -> r.run(fat));
+        }
+
         Location finalAt1 = at;
+
         J.s(() -> {
             if (isSpawnEffectRiseOutOfGround() && e instanceof LivingEntity && Chunks.hasPlayersNearby(finalAt1)) {
                 Location start = finalAt1.clone();
@@ -366,6 +402,7 @@ public class IrisEntity extends IrisRegistrant {
                 }, 0));
             }
         });
+
 
         return e;
     }

@@ -19,10 +19,11 @@
 package com.volmit.iris.util.mantle;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.mantle.MantleWriter;
-import com.volmit.iris.engine.object.IrisFeaturePositional;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.documentation.BlockCoordinates;
@@ -33,9 +34,11 @@ import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.function.Consumer4;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.matter.Matter;
+import com.volmit.iris.util.matter.MatterSlice;
 import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.HyperLock;
 import com.volmit.iris.util.parallel.MultiBurst;
+import lombok.Getter;
 import org.bukkit.Chunk;
 
 import java.io.File;
@@ -48,12 +51,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The mantle can store any type of data slice anywhere and manage regions & IO on it's own.
- * This class is fully thread safe read & write
+ * This class is fully thread safe read & writeNodeData
  */
 public class Mantle {
     private final File dataFolder;
     private final int worldHeight;
     private final Map<Long, Long> lastUse;
+    @Getter
     private final Map<Long, TectonicPlate> loadedRegions;
     private final HyperLock hyperLock;
     private final KSet<Long> unload;
@@ -80,6 +84,44 @@ public class Mantle {
         lastUse = new KMap<>();
         ioBurst = MultiBurst.burst;
         Iris.debug("Opened The Mantle " + C.DARK_AQUA + dataFolder.getAbsolutePath());
+    }
+
+    /**
+     * Get the file for a region
+     *
+     * @param folder the folder
+     * @param x      the x coord
+     * @param z      the z coord
+     * @return the file
+     */
+    public static File fileForRegion(File folder, int x, int z) {
+        return fileForRegion(folder, key(x, z));
+    }
+
+    /**
+     * Get the file for the given region
+     *
+     * @param folder the data folder
+     * @param key    the region key
+     * @return the file
+     */
+    public static File fileForRegion(File folder, Long key) {
+        File f = new File(folder, "p." + key + ".ttp");
+        if (!f.getParentFile().exists()) {
+            f.getParentFile().mkdirs();
+        }
+        return f;
+    }
+
+    /**
+     * Get the long value representing a chunk or region coordinate
+     *
+     * @param x the x
+     * @param z the z
+     * @return the value
+     */
+    public static Long key(int x, int z) {
+        return Cache.key(x, z);
     }
 
     /**
@@ -222,16 +264,28 @@ public class Mantle {
             return;
         }
 
-        if (t instanceof IrisFeaturePositional) {
-            get((x >> 4) >> 5, (z >> 4) >> 5)
-                    .getOrCreate((x >> 4) & 31, (z >> 4) & 31).addFeature((IrisFeaturePositional) t);
-        } else {
-            Matter matter = get((x >> 4) >> 5, (z >> 4) >> 5)
-                    .getOrCreate((x >> 4) & 31, (z >> 4) & 31)
-                    .getOrCreate(y >> 4);
-            matter.slice(matter.getClass(t))
-                    .set(x & 15, y & 15, z & 15, t);
+        Matter matter = get((x >> 4) >> 5, (z >> 4) >> 5)
+                .getOrCreate((x >> 4) & 31, (z >> 4) & 31)
+                .getOrCreate(y >> 4);
+        matter.slice(matter.getClass(t))
+                .set(x & 15, y & 15, z & 15, t);
+    }
+
+    @BlockCoordinates
+    public <T> void remove(int x, int y, int z, Class<T> t) {
+        if (closed.get()) {
+            throw new RuntimeException("The Mantle is closed");
         }
+
+        if (y < 0 || y >= worldHeight) {
+            return;
+        }
+
+        Matter matter = get((x >> 4) >> 5, (z >> 4) >> 5)
+                .getOrCreate((x >> 4) & 31, (z >> 4) & 31)
+                .getOrCreate(y >> 4);
+        matter.slice(t)
+                .set(x & 15, y & 15, z & 15, null);
     }
 
     /**
@@ -280,7 +334,7 @@ public class Mantle {
     }
 
     /**
-     * Closes the Mantle. By closing the mantle, you can no longer read or write
+     * Closes the Mantle. By closing the mantle, you can no longer read or writeNodeData
      * any data to the mantle or it's Tectonic Plates. Closing will also flush any
      * loaded regions to the disk in parallel.
      */
@@ -308,6 +362,7 @@ public class Mantle {
             Iris.reportError(e);
         }
 
+        loadedRegions.clear();
         Iris.debug("The Mantle has Closed " + C.DARK_AQUA + dataFolder.getAbsolutePath());
     }
 
@@ -391,7 +446,6 @@ public class Mantle {
         return get(x, z);
     }
 
-
     /**
      * This retreives a future of the Tectonic Plate at the given coordinates.
      * All methods accessing tectonic plates should go through this method
@@ -422,6 +476,7 @@ public class Mantle {
 
             if (file.exists()) {
                 try {
+                    Iris.addPanic("reading.tectonic-plate", file.getAbsolutePath());
                     region = TectonicPlate.read(worldHeight, file);
 
                     if (region.getX() != x || region.getZ() != z) {
@@ -434,6 +489,7 @@ public class Mantle {
                     Iris.error("Failed to read Tectonic Plate " + file.getAbsolutePath() + " creating a new chunk instead.");
                     Iris.reportError(e);
                     e.printStackTrace();
+                    Iris.panic();
                     region = new TectonicPlate(worldHeight, x, z);
                     loadedRegions.put(k, region);
                     Iris.debug("Created new Tectonic Plate (Due to Load Failure) " + C.DARK_GREEN + x + " " + z);
@@ -447,44 +503,6 @@ public class Mantle {
             Iris.debug("Created new Tectonic Plate " + C.DARK_GREEN + x + " " + z);
             return region;
         }));
-    }
-
-    /**
-     * Get the file for a region
-     *
-     * @param folder the folder
-     * @param x      the x coord
-     * @param z      the z coord
-     * @return the file
-     */
-    public static File fileForRegion(File folder, int x, int z) {
-        return fileForRegion(folder, key(x, z));
-    }
-
-    /**
-     * Get the file for the given region
-     *
-     * @param folder the data folder
-     * @param key    the region key
-     * @return the file
-     */
-    public static File fileForRegion(File folder, Long key) {
-        File f = new File(folder, "p." + key + ".ttp");
-        if (!f.getParentFile().exists()) {
-            f.getParentFile().mkdirs();
-        }
-        return f;
-    }
-
-    /**
-     * Get the long value representing a chunk or region coordinate
-     *
-     * @param x the x
-     * @param z the z
-     * @return the value
-     */
-    public static Long key(int x, int z) {
-        return Cache.key(x, z);
     }
 
     public void saveAll() {
@@ -505,5 +523,21 @@ public class Mantle {
 
     public int getLoadedRegionCount() {
         return loadedRegions.size();
+    }
+
+    public <T> void set(int x, int y, int z, MatterSlice<T> slice) {
+        if (slice.isEmpty()) {
+            return;
+        }
+
+        slice.iterateSync((xx, yy, zz, t) -> set(x + xx, y + yy, z + zz, t));
+    }
+
+    public boolean isLoaded(Chunk c) {
+        return loadedRegions.containsKey(key(c.getX() >> 5, c.getZ() >> 5));
+    }
+
+    public boolean shouldReduce(Engine engine) {
+        return !engine.isStudio() || IrisSettings.get().getPerformance().isTrimMantleInStudio();
     }
 }

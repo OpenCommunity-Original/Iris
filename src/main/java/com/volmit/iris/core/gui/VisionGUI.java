@@ -44,10 +44,20 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
 import javax.imageio.ImageIO;
-import javax.swing.*;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
 import javax.swing.event.MouseInputListener;
-import java.awt.*;
-import java.awt.event.*;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionListener;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -215,7 +225,7 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
         BiFunction<Double, Double, Integer> colorFunction = (d, dx) -> Color.black.getRGB();
 
         switch (currentType) {
-            case BIOME, DECORATOR_LOAD, OBJECT_LOAD, LAYER_LOAD -> colorFunction = (x, z) -> engine.getComplex().getTrueBiomeStreamNoFeatures().get(x, z).getColor(engine, currentType).getRGB();
+            case BIOME, DECORATOR_LOAD, OBJECT_LOAD, LAYER_LOAD -> colorFunction = (x, z) -> engine.getComplex().getTrueBiomeStream().get(x, z).getColor(engine, currentType).getRGB();
             case BIOME_LAND -> colorFunction = (x, z) -> engine.getComplex().getLandBiomeStream().get(x, z).getColor(engine, currentType).getRGB();
             case BIOME_SEA -> colorFunction = (x, z) -> engine.getComplex().getSeaBiomeStream().get(x, z).getColor(engine, currentType).getRGB();
             case REGION -> colorFunction = (x, z) -> engine.getComplex().getRegionStream().get(x, z).getColor(engine.getComplex(), currentType).getRGB();
@@ -719,7 +729,7 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
         IrisComplex complex = engine.getComplex();
         File r = null;
         switch (currentType) {
-            case BIOME, LAYER_LOAD, DECORATOR_LOAD, OBJECT_LOAD, HEIGHT -> r = complex.getTrueBiomeStreamNoFeatures().get(getWorldX(hx), getWorldZ(hz)).openInVSCode();
+            case BIOME, LAYER_LOAD, DECORATOR_LOAD, OBJECT_LOAD, HEIGHT -> r = complex.getTrueBiomeStream().get(getWorldX(hx), getWorldZ(hz)).openInVSCode();
             case BIOME_LAND -> r = complex.getLandBiomeStream().get(getWorldX(hx), getWorldZ(hz)).openInVSCode();
             case BIOME_SEA -> r = complex.getSeaBiomeStream().get(getWorldX(hx), getWorldZ(hz)).openInVSCode();
             case REGION -> r = complex.getRegionStream().get(getWorldX(hx), getWorldZ(hz)).openInVSCode();
@@ -734,9 +744,9 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
             if (player != null) {
                 int xx = (int) getWorldX(hx);
                 int zz = (int) getWorldZ(hz);
-                double h = engine.getComplex().getTrueHeightStream().get(xx, zz);
+                int h = engine.getComplex().getRoundedHeighteightStream().get(xx, zz);
                 player.teleport(new Location(player.getWorld(), xx, h, zz));
-                notify("Teleporting to " + xx + ", " + (int) h + ", " + zz);
+                notify("Teleporting to " + xx + ", " + h + ", " + zz);
             } else {
                 notify("No player in world, can't teleport.");
             }

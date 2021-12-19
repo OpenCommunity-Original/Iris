@@ -65,6 +65,15 @@ public class HeadlessWorld {
         }
     }
 
+    public static HeadlessWorld from(World world) {
+        return new HeadlessWorld(world.getName(), IrisToolbelt.access(world)
+                .getEngine().getTarget().getDimension(), world.getSeed());
+    }
+
+    public static HeadlessWorld from(String name, String dimension, long seed) {
+        return new HeadlessWorld(name, IrisData.loadAnyDimension(dimension), seed);
+    }
+
     @SuppressWarnings("ConstantConditions")
     public HeadlessGenerator generate() {
         Engine e = null;
@@ -85,20 +94,11 @@ public class HeadlessWorld {
     public World load() {
         World w = new WorldCreator(worldName)
                 .environment(dimension.getEnvironment())
-                .seed(world.seed())
+                .seed(world.getRawWorldSeed())
                 .generator(new BukkitChunkGenerator(world, studio, dimension.getLoader().getDataFolder(),
                         dimension.getLoadKey()))
                 .createWorld();
         world.realWorld(w);
         return w;
-    }
-
-    public static HeadlessWorld from(World world) {
-        return new HeadlessWorld(world.getName(), IrisToolbelt.access(world)
-                .getEngine().getTarget().getDimension(), world.getSeed());
-    }
-
-    public static HeadlessWorld from(String name, String dimension, long seed) {
-        return new HeadlessWorld(name, IrisData.loadAnyDimension(dimension), seed);
     }
 }

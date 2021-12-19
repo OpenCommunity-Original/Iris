@@ -22,7 +22,17 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.core.loader.ResourceLoader;
-import com.volmit.iris.engine.object.annotations.*;
+import com.volmit.iris.engine.object.annotations.ArrayType;
+import com.volmit.iris.engine.object.annotations.Desc;
+import com.volmit.iris.engine.object.annotations.MaxNumber;
+import com.volmit.iris.engine.object.annotations.MinNumber;
+import com.volmit.iris.engine.object.annotations.RegistryListBlockType;
+import com.volmit.iris.engine.object.annotations.RegistryListFont;
+import com.volmit.iris.engine.object.annotations.RegistryListItemType;
+import com.volmit.iris.engine.object.annotations.RegistryListResource;
+import com.volmit.iris.engine.object.annotations.RegistryListSpecialEntity;
+import com.volmit.iris.engine.object.annotations.Required;
+import com.volmit.iris.engine.object.annotations.Snippet;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.data.B;
@@ -31,7 +41,7 @@ import com.volmit.iris.util.json.JSONObject;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.potion.PotionEffectType;
 
-import java.awt.*;
+import java.awt.GraphicsEnvironment;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.List;
@@ -57,7 +67,27 @@ public class SchemaBuilder {
         this.root = root;
     }
 
-    public JSONObject compute() {
+    private static JSONArray getEnchantmentTypes() {
+        JSONArray a = new JSONArray();
+
+        for (Field gg : Enchantment.class.getDeclaredFields()) {
+            a.put(gg.getName());
+        }
+
+        return a;
+    }
+
+    private static JSONArray getPotionTypes() {
+        JSONArray a = new JSONArray();
+
+        for (PotionEffectType gg : PotionEffectType.values()) {
+            a.put(gg.getName().toUpperCase().replaceAll("\\Q \\E", "_"));
+        }
+
+        return a;
+    }
+
+    public JSONObject construct() {
         JSONObject schema = new JSONObject();
         schema.put("$schema", "http://json-schema.org/draft-07/schema#");
         schema.put("$id", "http://volmit.com/iris-schema/" + root.getSimpleName().toLowerCase() + ".json");
@@ -645,28 +675,8 @@ public class SchemaBuilder {
         }
 
         if (!r.isPrimitive() && !r.equals(KList.class) && !r.equals(KMap.class) && r.getCanonicalName().startsWith("com.volmit.")) {
-            warnings.addIfMissing("Missing @Desc on " + r.getSimpleName() + " in " + r.getDeclaringClass().getCanonicalName());
+            warnings.addIfMissing("Missing @Desc on " + r.getSimpleName() + " in " + (r.getDeclaringClass() != null ? r.getDeclaringClass().getCanonicalName() : " NOSRC"));
         }
         return "";
-    }
-
-    private static JSONArray getEnchantmentTypes() {
-        JSONArray a = new JSONArray();
-
-        for (Field gg : Enchantment.class.getDeclaredFields()) {
-            a.put(gg.getName());
-        }
-
-        return a;
-    }
-
-    private static JSONArray getPotionTypes() {
-        JSONArray a = new JSONArray();
-
-        for (PotionEffectType gg : PotionEffectType.values()) {
-            a.put(gg.getName().toUpperCase().replaceAll("\\Q \\E", "_"));
-        }
-
-        return a;
     }
 }

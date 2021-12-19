@@ -21,19 +21,33 @@ package com.volmit.iris.engine.jigsaw;
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.framework.Engine;
+import com.volmit.iris.engine.object.IObjectPlacer;
+import com.volmit.iris.engine.object.IrisDirection;
+import com.volmit.iris.engine.object.IrisJigsawPiece;
+import com.volmit.iris.engine.object.IrisJigsawPieceConnector;
+import com.volmit.iris.engine.object.IrisJigsawStructure;
+import com.volmit.iris.engine.object.IrisObject;
+import com.volmit.iris.engine.object.IrisObjectPlacement;
+import com.volmit.iris.engine.object.IrisObjectRotation;
+import com.volmit.iris.engine.object.IrisPosition;
+import com.volmit.iris.engine.object.ObjectPlaceMode;
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.interpolation.InterpolationMethod;
 import com.volmit.iris.util.mantle.Mantle;
 import com.volmit.iris.util.math.RNG;
 import lombok.Data;
 import org.bukkit.Axis;
 import org.bukkit.World;
 
-import java.util.function.Consumer;
-
 @Data
 public class PlannedStructure {
+    private static transient ConcurrentLinkedHashMap<String, IrisObject> objectRotationCache
+            = new ConcurrentLinkedHashMap.Builder<String, IrisObject>()
+            .initialCapacity(64)
+            .maximumWeightedCapacity(1024)
+            .concurrencyLevel(32)
+            .build();
     private KList<PlannedPiece> pieces;
     private IrisJigsawStructure structure;
     private IrisPosition position;
@@ -41,12 +55,6 @@ public class PlannedStructure {
     private RNG rng;
     private boolean verbose;
     private boolean terminating;
-    private static transient ConcurrentLinkedHashMap<String, IrisObject> objectRotationCache
-            = new ConcurrentLinkedHashMap.Builder<String, IrisObject>()
-            .initialCapacity(64)
-            .maximumWeightedCapacity(1024)
-            .concurrencyLevel(32)
-            .build();
 
     public PlannedStructure(IrisJigsawStructure structure, IrisPosition position, RNG rng) {
         terminating = false;
@@ -71,21 +79,17 @@ public class PlannedStructure {
         }
     }
 
-    public void place(IObjectPlacer placer, Mantle e, Consumer<Runnable> post) {
+    public void place(IObjectPlacer placer, Mantle e, Engine eng) {
         IrisObjectPlacement options = new IrisObjectPlacement();
         options.getRotation().setEnabled(false);
         int startHeight = pieces.get(0).getPosition().getY();
 
         for (PlannedPiece i : pieces) {
-            if (i.getPiece().getPlacementOptions().usesFeatures()) {
-                place(i, startHeight, options, placer, e);
-            } else {
-                post.accept(() -> place(i, startHeight, options, placer, e));
-            }
+            place(i, startHeight, options, placer, e, eng);
         }
     }
 
-    public void place(PlannedPiece i, int startHeight, IrisObjectPlacement o, IObjectPlacer placer, Mantle e) {
+    public void place(PlannedPiece i, int startHeight, IrisObjectPlacement o, IObjectPlacer placer, Mantle e, Engine eng) {
         IrisObjectPlacement options = o;
 
         if (i.getPiece().getPlacementOptions() != null) {
@@ -101,6 +105,7 @@ public class PlannedStructure {
         int sz = (v.getD() / 2);
         int xx = i.getPosition().getX() + sx;
         int zz = i.getPosition().getZ() + sz;
+        RNG rngf = new RNG(Cache.key(xx, zz));
         int offset = i.getPosition().getY() - startHeight;
         int height = 0;
 
@@ -116,42 +121,13 @@ public class PlannedStructure {
 
         height += offset + (v.getH() / 2);
 
-        if (options.getMode().equals(ObjectPlaceMode.PAINT) || options.isVacuum()) {
+        if (options.getMode().equals(ObjectPlaceMode.PAINT)) {
             height = -1;
         }
 
         int id = rng.i(0, Integer.MAX_VALUE);
-        int h = vo.place(xx, height, zz, placer, options, rng, (b)
+        vo.place(xx, height, zz, placer, options, rng, e.shouldReduce(eng) ? null : (b)
                 -> e.set(b.getX(), b.getY(), b.getZ(), v.getLoadKey() + "@" + id), null, getData());
-
-        for (IrisJigsawPieceConnector j : i.getAvailableConnectors()) {
-            if (j.getSpawnEntity() != null)// && h != -1)
-            {
-                IrisPosition p;
-                if (j.getEntityPosition() == null) {
-                    p = i.getWorldPosition(j).add(new IrisPosition(j.getDirection().toVector().multiply(2)));
-                } else {
-                    p = i.getWorldPosition(j).add(j.getEntityPosition());
-                }
-
-                if (options.getMode().equals(ObjectPlaceMode.PAINT) || options.isVacuum()) {
-                    p.setY(placer.getHighest(xx, zz, getData()) + offset + (v.getH() / 2));
-                } else {
-                    p.setY(height);
-                }
-            }
-        }
-
-        if (options.usesFeatures()) {
-            double a = Math.max(v.getW(), v.getD());
-            IrisFeature f = new IrisFeature();
-            f.setConvergeToHeight(h - (v.getH() >> 1) - 1);
-            f.setBlockRadius(a);
-            f.setInterpolationRadius(a / 4);
-            f.setInterpolator(InterpolationMethod.BILINEAR_STARCAST_9);
-            f.setStrength(1D);
-            e.set(xx, 0, zz, new IrisFeaturePositional(xx, zz, f));
-        }
     }
 
     public void place(World world) {
@@ -354,12 +330,6 @@ public class PlannedStructure {
     public IrisObject rotated(IrisJigsawPiece piece, IrisObjectRotation rotation) {
         String key = piece.getObject() + "-" + rotation.hashCode();
 
-        return objectRotationCache.compute(key, (k, v) -> {
-            if (v == null) {
-                return rotation.rotateCopy(data.getObjectLoader().load(piece.getObject()));
-            }
-
-            return v;
-        });
+        return objectRotationCache.computeIfAbsent(key, (k) -> rotation.rotateCopy(data.getObjectLoader().load(piece.getObject())));
     }
 }

@@ -29,9 +29,9 @@ import java.util.concurrent.ForkJoinPool.ForkJoinWorkerThreadFactory;
 import java.util.concurrent.ForkJoinWorkerThread;
 
 public class GroupedExecutor {
-    private int xc;
     private final ExecutorService service;
     private final KMap<String, Integer> mirror;
+    private int xc;
 
     public GroupedExecutor(int threadLimit, int priority, String name) {
         xc = 1;
@@ -85,7 +85,6 @@ public class GroupedExecutor {
 
     public void queue(String q, NastyRunnable r) {
         mirror.compute(q, (k, v) -> k == null || v == null ? 1 : v + 1);
-
         service.execute(() ->
         {
             try {
@@ -95,7 +94,7 @@ public class GroupedExecutor {
                 e.printStackTrace();
             }
 
-            mirror.compute(q, (k, v) -> v - 1);
+            mirror.computeIfPresent(q, (k, v) -> v - 1);
         });
     }
 

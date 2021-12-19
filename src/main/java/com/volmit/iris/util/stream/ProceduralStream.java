@@ -20,6 +20,7 @@ package com.volmit.iris.util.stream;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.IRare;
 import com.volmit.iris.engine.object.IrisStyledRange;
 import com.volmit.iris.util.collection.KList;
@@ -28,14 +29,45 @@ import com.volmit.iris.util.function.Function3;
 import com.volmit.iris.util.function.Function4;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.math.RNG;
-import com.volmit.iris.util.stream.arithmetic.*;
-import com.volmit.iris.util.stream.convert.*;
+import com.volmit.iris.util.reflect.V;
+import com.volmit.iris.util.stream.arithmetic.AddingStream;
+import com.volmit.iris.util.stream.arithmetic.ClampedStream;
+import com.volmit.iris.util.stream.arithmetic.CoordinateBitShiftLeftStream;
+import com.volmit.iris.util.stream.arithmetic.CoordinateBitShiftRightStream;
+import com.volmit.iris.util.stream.arithmetic.DividingStream;
+import com.volmit.iris.util.stream.arithmetic.FittedStream;
+import com.volmit.iris.util.stream.arithmetic.MaxingStream;
+import com.volmit.iris.util.stream.arithmetic.MinningStream;
+import com.volmit.iris.util.stream.arithmetic.ModuloStream;
+import com.volmit.iris.util.stream.arithmetic.MultiplyingStream;
+import com.volmit.iris.util.stream.arithmetic.OffsetStream;
+import com.volmit.iris.util.stream.arithmetic.RadialStream;
+import com.volmit.iris.util.stream.arithmetic.RoundingDoubleStream;
+import com.volmit.iris.util.stream.arithmetic.SlopeStream;
+import com.volmit.iris.util.stream.arithmetic.SubtractingStream;
+import com.volmit.iris.util.stream.arithmetic.ZoomStream;
+import com.volmit.iris.util.stream.convert.AwareConversionStream2D;
+import com.volmit.iris.util.stream.convert.AwareConversionStream3D;
+import com.volmit.iris.util.stream.convert.CachedConversionStream;
+import com.volmit.iris.util.stream.convert.ConversionStream;
+import com.volmit.iris.util.stream.convert.ForceDoubleStream;
+import com.volmit.iris.util.stream.convert.RoundingStream;
+import com.volmit.iris.util.stream.convert.SelectionStream;
+import com.volmit.iris.util.stream.convert.SignificanceStream;
+import com.volmit.iris.util.stream.convert.To3DStream;
 import com.volmit.iris.util.stream.interpolation.Interpolated;
 import com.volmit.iris.util.stream.sources.FunctionStream;
-import com.volmit.iris.util.stream.utility.*;
+import com.volmit.iris.util.stream.utility.CachedStream2D;
+import com.volmit.iris.util.stream.utility.CachedStream3D;
+import com.volmit.iris.util.stream.utility.NullSafeStream;
+import com.volmit.iris.util.stream.utility.ProfiledStream;
+import com.volmit.iris.util.stream.utility.SemaphoreStream;
+import com.volmit.iris.util.stream.utility.SynchronizedStream;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @SuppressWarnings("ALL")
 public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
@@ -259,12 +291,12 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new To3DStream<T>(this);
     }
 
-    default ProceduralStream<T> cache2D(int maxSize) {
-        return new CachedStream2D<T>(this, maxSize);
+    default ProceduralStream<T> cache2D(String name, Engine engine, int size) {
+        return new CachedStream2D<T>(name, engine, this, size);
     }
 
-    default ProceduralStream<T> cache3D(int maxSize) {
-        return new CachedStream3D<T>(this, maxSize);
+    default ProceduralStream<T> cache3D(String name, Engine engine, int maxSize) {
+        return new CachedStream3D<T>(name, engine, this, maxSize);
     }
 
     default <V> ProceduralStream<V> convert(Function<T, V> converter) {
@@ -334,32 +366,16 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new SelectionStream<V>(this, rarityTypes);
     }
 
-    default <V> ProceduralStream<V> selectRarity(List<V> types) {
-        KList<V> rarityTypes = new KList<>();
-        int totalRarity = 0;
-        for (V i : types) {
-            totalRarity += IRare.get(i);
-        }
-
-        for (V i : types) {
-            rarityTypes.addMultiple(i, totalRarity / IRare.get(i));
-        }
-
-        return new SelectionStream<V>(this, rarityTypes);
+    default <V extends IRare> ProceduralStream<V> selectRarity(List<V> types) {
+        return IRare.stream(this.forceDouble(), types);
     }
 
-    default <V> ProceduralStream<V> selectRarity(List<V> types, Function<V, IRare> loader) {
-        KList<V> rarityTypes = new KList<>();
-        int totalRarity = 0;
-        for (V i : types) {
-            totalRarity += IRare.get(loader.apply(i));
+    default <V> ProceduralStream<IRare> selectRarity(List<V> types, Function<V, IRare> loader) {
+        List<IRare> r = new ArrayList<>();
+        for(V f : types) {
+            r.add(loader.apply(f));
         }
-
-        for (V i : types) {
-            rarityTypes.addMultiple(i, totalRarity / IRare.get(loader.apply(i)));
-        }
-
-        return new SelectionStream<V>(this, rarityTypes);
+        return selectRarity(r);
     }
 
     default <V> int countPossibilities(List<V> types, Function<V, IRare> loader) {

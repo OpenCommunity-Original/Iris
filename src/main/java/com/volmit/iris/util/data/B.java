@@ -20,8 +20,11 @@ package com.volmit.iris.util.data;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.core.service.RegistrySVC;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.scheduling.ChronoLatch;
+import it.unimi.dsi.fastutil.ints.Int2IntMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
@@ -35,6 +38,7 @@ import org.bukkit.block.data.type.PointedDripstone;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static org.bukkit.Material.*;
@@ -43,6 +47,9 @@ public class B {
     private static final Material AIR_MATERIAL = Material.AIR;
     private static final BlockData AIR = AIR_MATERIAL.createBlockData();
     private static final IntSet foliageCache = buildFoliageCache();
+    private static final IntSet deepslateCache = buildDeepslateCache();
+    private static final Int2IntMap normal2DeepslateCache = buildNormal2DeepslateCache();
+    private static final Int2IntMap deepslate2NormalCache = buildDeepslate2NormalCache();
     private static final IntSet decorantCache = buildDecorantCache();
     private static final IntSet storageCache = buildStorageCache();
     private static final IntSet storageChestCache = buildStorageChestCache();
@@ -82,6 +89,54 @@ public class B {
         }).forEach((i) -> b.add(i.ordinal()));
 
         return IntSets.unmodifiable(b);
+    }
+
+    private static IntSet buildDeepslateCache() {
+        IntSet b = new IntOpenHashSet();
+        Arrays.stream(new Material[]{
+                DEEPSLATE,
+                DEEPSLATE_BRICKS,
+                DEEPSLATE_BRICK_SLAB,
+                DEEPSLATE_BRICK_STAIRS,
+                DEEPSLATE_BRICK_WALL,
+                DEEPSLATE_TILE_SLAB,
+                DEEPSLATE_TILES,
+                DEEPSLATE_TILE_STAIRS,
+                DEEPSLATE_TILE_WALL,
+                CRACKED_DEEPSLATE_TILES
+        }).forEach((i) -> b.add(i.ordinal()));
+
+        return IntSets.unmodifiable(b);
+    }
+
+    private static Int2IntMap buildNormal2DeepslateCache() {
+        Int2IntMap b = new Int2IntOpenHashMap();
+
+        b.put(COAL_ORE.ordinal(), DEEPSLATE_COAL_ORE.ordinal());
+        b.put(EMERALD_ORE.ordinal(), DEEPSLATE_EMERALD_ORE.ordinal());
+        b.put(DIAMOND_ORE.ordinal(), DEEPSLATE_DIAMOND_ORE.ordinal());
+        b.put(COPPER_ORE.ordinal(), DEEPSLATE_COPPER_ORE.ordinal());
+        b.put(GOLD_ORE.ordinal(), DEEPSLATE_GOLD_ORE.ordinal());
+        b.put(IRON_ORE.ordinal(), DEEPSLATE_IRON_ORE.ordinal());
+        b.put(LAPIS_ORE.ordinal(), DEEPSLATE_LAPIS_ORE.ordinal());
+        b.put(REDSTONE_ORE.ordinal(), DEEPSLATE_REDSTONE_ORE.ordinal());
+
+        return b;
+    }
+
+    private static Int2IntMap buildDeepslate2NormalCache() {
+        Int2IntMap b = new Int2IntOpenHashMap();
+
+        b.put(DEEPSLATE_COAL_ORE.ordinal(), COAL_ORE.ordinal());
+        b.put(DEEPSLATE_EMERALD_ORE.ordinal(), EMERALD_ORE.ordinal());
+        b.put(DEEPSLATE_DIAMOND_ORE.ordinal(), DIAMOND_ORE.ordinal());
+        b.put(DEEPSLATE_COPPER_ORE.ordinal(), COPPER_ORE.ordinal());
+        b.put(DEEPSLATE_GOLD_ORE.ordinal(), GOLD_ORE.ordinal());
+        b.put(DEEPSLATE_IRON_ORE.ordinal(), IRON_ORE.ordinal());
+        b.put(DEEPSLATE_LAPIS_ORE.ordinal(), LAPIS_ORE.ordinal());
+        b.put(DEEPSLATE_REDSTONE_ORE.ordinal(), REDSTONE_ORE.ordinal());
+
+        return b;
     }
 
     private static IntSet buildDecorantCache() {
@@ -216,6 +271,26 @@ public class B {
         return IntSets.unmodifiable(b);
     }
 
+    public static BlockData toDeepSlateOre(BlockData block, BlockData ore) {
+        int key = ore.getMaterial().ordinal();
+
+        if (isDeepSlate(block)) {
+            if (normal2DeepslateCache.containsKey(key)) {
+                return Material.values()[normal2DeepslateCache.get(key)].createBlockData();
+            }
+        } else {
+            if (deepslate2NormalCache.containsKey(key)) {
+                return Material.values()[deepslate2NormalCache.get(key)].createBlockData();
+            }
+        }
+
+        return ore;
+    }
+
+    public static boolean isDeepSlate(BlockData blockData) {
+        return deepslateCache.contains(blockData.getMaterial().ordinal());
+    }
+
     public static boolean isOre(BlockData blockData) {
         return blockData.getMaterial().name().endsWith("_ORE");
     }
@@ -275,6 +350,13 @@ public class B {
     public static boolean isFoliagePlantable(Material d) {
         return d.equals(Material.GRASS_BLOCK)
                 || d.equals(Material.DIRT)
+                || d.equals(TALL_GRASS)
+                || d.equals(TALL_SEAGRASS)
+                || d.equals(LARGE_FERN)
+                || d.equals(SUNFLOWER)
+                || d.equals(PEONY)
+                || d.equals(LILAC)
+                || d.equals(ROSE_BUSH)
                 || d.equals(Material.ROOTED_DIRT)
                 || d.equals(Material.COARSE_DIRT)
                 || d.equals(Material.PODZOL);
@@ -317,6 +399,15 @@ public class B {
     public static BlockData getOrNull(String bdxf) {
         try {
             String bd = bdxf.trim();
+
+            if (bd.startsWith("minecraft:cauldron[level=")) {
+                bd = bd.replaceAll("\\Q:cauldron[\\E", ":water_cauldron[");
+            }
+
+            if (bd.equals("minecraft:grass_path")) {
+                return DIRT_PATH.createBlockData();
+            }
+
             BlockData bdx = parseBlockData(bd);
 
             if (bdx == null) {
@@ -352,15 +443,56 @@ public class B {
         try {
             BlockData bx = null;
 
-            if (ix.startsWith("oraxen:") && Iris.linkOraxen.supported()) {
-                bx = Iris.linkOraxen.getBlockDataFor(ix.split("\\Q:\\E")[1]);
+            if (!ix.startsWith("minecraft:")) {
+                if (ix.startsWith("oraxen:") && Iris.linkOraxen.supported()) {
+                    bx = Iris.linkOraxen.getBlockDataFor(ix.split("\\Q:\\E")[1]);
+                }
+
+                if (bx == null) {
+                    try {
+                        if (ix.contains(":")) {
+                            String[] v = ix.toLowerCase().split("\\Q:\\E");
+                            Supplier<BlockData> b = Iris.service(RegistrySVC.class).getCustomBlockRegistry().resolve(v[0], v[1]);
+
+                            if (b != null) {
+                                bx = b.get();
+                            }
+                        }
+                    } catch (Throwable e) {
+                        e.printStackTrace();// TODO: REMOVE
+                    }
+                }
             }
 
             if (bx == null) {
-                bx = Bukkit.createBlockData(ix);
+                try {
+                    bx = Bukkit.createBlockData(ix.toLowerCase());
+                } catch (Throwable e) {
+
+                }
             }
 
-            if (bx instanceof Leaves && IrisSettings.get().getGenerator().preventLeafDecay) {
+            if (bx == null) {
+                try {
+                    bx = Bukkit.createBlockData("minecraft:" + ix.toLowerCase());
+                } catch (Throwable e) {
+
+                }
+            }
+
+            if (bx == null) {
+                try {
+                    bx = Material.valueOf(ix.toUpperCase()).createBlockData();
+                } catch (Throwable e) {
+
+                }
+            }
+
+            if (bx == null) {
+                return null;
+            }
+
+            if (bx instanceof Leaves && IrisSettings.get().getGenerator().isPreventLeafDecay()) {
                 ((Leaves) bx).setPersistent(true);
             } else if (bx instanceof Leaves) {
                 ((Leaves) bx).setPersistent(false);
@@ -506,6 +638,12 @@ public class B {
             for (String i : Iris.linkOraxen.getItemTypes()) {
                 bt.add("oraxen:" + i);
             }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+
+        try {
+            bt.addAll(Iris.service(RegistrySVC.class).getCustomBlockRegistry().compile());
         } catch (Throwable e) {
             e.printStackTrace();
         }

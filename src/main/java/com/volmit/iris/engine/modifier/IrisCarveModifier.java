@@ -18,12 +18,15 @@
 
 package com.volmit.iris.engine.modifier;
 
-import com.volmit.iris.engine.IrisEngine;
 import com.volmit.iris.engine.actuator.IrisDecorantActuator;
 import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.EngineAssignedModifier;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.object.InferredType;
+import com.volmit.iris.engine.object.IrisBiome;
+import com.volmit.iris.engine.object.IrisDecorationPart;
+import com.volmit.iris.engine.object.IrisDecorator;
+import com.volmit.iris.engine.object.IrisPosition;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.data.B;
@@ -40,18 +43,17 @@ import lombok.Data;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
 
-import java.util.Objects;
-import java.util.function.Supplier;
-
 public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
     private final RNG rng;
     private final BlockData AIR = Material.CAVE_AIR.createBlockData();
     private final BlockData WATER = Material.WATER.createBlockData();
     private final BlockData LAVA = Material.LAVA.createBlockData();
+    private final IrisDecorantActuator decorant;
 
     public IrisCarveModifier(Engine engine) {
         super(engine, "Carve");
-        rng = new RNG(getEngine().getWorld().seed() + 3297778).nextParallelRNG(67648777);
+        rng = new RNG(getEngine().getSeedManager().getCarve());
+        decorant = new IrisDecorantActuator(engine);
     }
 
     @Override
@@ -79,7 +81,7 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
                 return;
             }
 
-            positions.compute(Cache.key(rx, rz), (k, v) -> Objects.requireNonNullElseGet(v, (Supplier<KList<Integer>>) KList::new).qadd(yy));
+            positions.computeIfAbsent(Cache.key(rx, rz), (k) -> new KList<>()).qadd(yy);
 
             if (rz < 15 && mantle.get(xx, yy, zz + 1, MatterCavern.class) == null) {
                 walls.put(new IrisPosition(rx, yy, rz + 1), c);
@@ -103,10 +105,9 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
 
             if (c.isWater()) {
                 output.set(rx, yy, rz, WATER);
-            } else if(c.isLava()) {
+            } else if (c.isLava()) {
                 output.set(rx, yy, rz, LAVA);
-            }
-            else {
+            } else {
                 output.set(rx, yy, rz, AIR);
             }
         };
@@ -122,7 +123,7 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
                 biome.setInferredType(InferredType.CAVE);
                 BlockData d = biome.getWall().get(rng, i.getX() + (x << 4), i.getY(), i.getZ() + (z << 4), getData());
 
-                if (d != null && B.isSolid(output.get(i.getX(), i.getY(), i.getZ()))) {
+                if (d != null && B.isSolid(output.get(i.getX(), i.getY(), i.getZ())) && i.getY() <= getComplex().getHeightStream().get(i.getX() + (x << 4), i.getZ() + (z << 4))) {
                     output.set(i.getX(), i.getY(), i.getZ(), d);
                 }
             }
@@ -165,11 +166,19 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
     }
 
     private void processZone(Hunk<BlockData> output, MantleChunk mc, Mantle mantle, CaveZone zone, int rx, int rz, int xx, int zz) {
-        boolean decFloor = B.isSolid(output.get(rx, zone.floor - 1, rz));
-        boolean decCeiling = B.isSolid(output.get(rx, zone.ceiling + 1, rz));
+        boolean decFloor = B.isSolid(output.getClosest(rx, zone.floor - 1, rz));
+        boolean decCeiling = B.isSolid(output.getClosest(rx, zone.ceiling + 1, rz));
         int center = (zone.floor + zone.ceiling) / 2;
         int thickness = zone.airThickness();
         String customBiome = "";
+
+        if (B.isDecorant(output.getClosest(rx, zone.ceiling + 1, rz))) {
+            output.set(rx, zone.ceiling + 1, rz, AIR);
+        }
+
+        if (B.isDecorant(output.get(rx, zone.ceiling, rz))) {
+            output.set(rx, zone.ceiling, rz, AIR);
+        }
 
         if (M.r(1D / 16D)) {
             mantle.set(xx, zone.ceiling, zz, MarkerMatter.CAVE_CEILING);
@@ -199,12 +208,11 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
 
         biome.setInferredType(InferredType.CAVE);
 
-        IrisDecorantActuator actuator = (IrisDecorantActuator) ((IrisEngine) getEngine()).getDecorantActuator();
         for (IrisDecorator i : biome.getDecorators()) {
             if (i.getPartOf().equals(IrisDecorationPart.NONE) && B.isSolid(output.get(rx, zone.getFloor() - 1, rz))) {
-                actuator.getSurfaceDecorator().decorate(rx, rz, xx, xx, xx, zz, zz, zz, output, biome, zone.getFloor() - 1, zone.airThickness());
+                decorant.getSurfaceDecorator().decorate(rx, rz, xx, xx, xx, zz, zz, zz, output, biome, zone.getFloor() - 1, zone.airThickness());
             } else if (i.getPartOf().equals(IrisDecorationPart.CEILING) && B.isSolid(output.get(rx, zone.getCeiling() + 1, rz))) {
-                actuator.getCeilingDecorator().decorate(rx, rz, xx, xx, xx, zz, zz, zz, output, biome, zone.getCeiling(), zone.airThickness());
+                decorant.getCeilingDecorator().decorate(rx, rz, xx, xx, xx, zz, zz, zz, output, biome, zone.getCeiling(), zone.airThickness());
             }
         }
 
@@ -228,20 +236,26 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
 
         blocks = biome.generateCeilingLayers(getDimension(), xx, zz, rng, 3, zone.ceiling, getData(), getComplex());
 
-        for (int i = 0; i < zone.ceiling + 1; i++) {
-            if (!blocks.hasIndex(i)) {
-                break;
-            }
+        if (zone.ceiling + 1 < mantle.getWorldHeight()) {
+            for (int i = 0; i < zone.ceiling + 1; i++) {
+                if (!blocks.hasIndex(i)) {
+                    break;
+                }
 
-            if (!B.isSolid(output.get(rx, zone.ceiling + i + 1, rz))) {
-                continue;
-            }
+                BlockData b = blocks.get(i);
+                BlockData up = output.get(rx, zone.ceiling + i + 1, rz);
 
-            if (B.isOre(output.get(rx, zone.ceiling + i + 1, rz))) {
-                continue;
-            }
+                if (!B.isSolid(up)) {
+                    continue;
+                }
 
-            output.set(rx, zone.ceiling + i + 1, rz, blocks.get(i));
+                if (B.isOre(up)) {
+                    output.set(rx, zone.ceiling + i + 1, rz, B.toDeepSlateOre(up, b));
+                    continue;
+                }
+
+                output.set(rx, zone.ceiling + i + 1, rz, b);
+            }
         }
     }
 

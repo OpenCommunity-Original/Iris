@@ -18,7 +18,6 @@
 
 package com.volmit.iris.core.commands;
 
-import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.gui.NoiseExplorerGUI;
@@ -29,7 +28,20 @@ import com.volmit.iris.core.service.ConversionSVC;
 import com.volmit.iris.core.service.StudioSVC;
 import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.engine.framework.Engine;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.object.InventorySlotType;
+import com.volmit.iris.engine.object.IrisBiome;
+import com.volmit.iris.engine.object.IrisBiomePaletteLayer;
+import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.object.IrisEntity;
+import com.volmit.iris.engine.object.IrisGenerator;
+import com.volmit.iris.engine.object.IrisInterpolator;
+import com.volmit.iris.engine.object.IrisLootTable;
+import com.volmit.iris.engine.object.IrisNoiseGenerator;
+import com.volmit.iris.engine.object.IrisObject;
+import com.volmit.iris.engine.object.IrisObjectPlacement;
+import com.volmit.iris.engine.object.IrisRegion;
+import com.volmit.iris.engine.object.IrisScript;
+import com.volmit.iris.engine.object.NoiseStyle;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.collection.KSet;
@@ -58,13 +70,18 @@ import com.volmit.iris.util.scheduling.jobs.JobCollection;
 import com.volmit.iris.util.scheduling.jobs.QueueJob;
 import com.volmit.iris.util.scheduling.jobs.SingleJob;
 import io.papermc.lib.PaperLib;
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
+import org.bukkit.FluidCollisionMode;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.util.BlockVector;
 import org.bukkit.util.Vector;
 
-import java.awt.*;
+import java.awt.Desktop;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -81,6 +98,25 @@ import java.util.function.Supplier;
 
 @Decree(name = "studio", aliases = {"std", "s"}, description = "Studio Commands", studio = true)
 public class CommandStudio implements DecreeExecutor {
+    public static String hrf(Duration duration) {
+        return duration.toString().substring(2).replaceAll("(\\d[HMS])(?!$)", "$1 ").toLowerCase();
+    }
+    private CommandFind find;
+
+    @Decree(description = "Download a project.", aliases = "dl")
+    public void download(
+            @Param(name = "pack", description = "The pack to download", defaultValue = "overworld", aliases = "project")
+                    String pack,
+            @Param(name = "branch", description = "The branch to download from", defaultValue = "master")
+                    String branch,
+            @Param(name = "trim", description = "Whether or not to download a trimmed version (do not enable when editing)", defaultValue = "false")
+                    boolean trim,
+            @Param(name = "overwrite", description = "Whether or not to overwrite the pack with the downloaded one", aliases = "force", defaultValue = "false")
+                    boolean overwrite
+    ) {
+        new CommandIris().download(pack, branch, trim, overwrite);
+    }
+
     @Decree(description = "Open a new studio world", aliases = "o", sync = true)
     public void open(
             @Param(defaultValue = "overworld", description = "The dimension to open a studio for", aliases = "dim")
@@ -261,7 +297,6 @@ public class CommandStudio implements DecreeExecutor {
         Iris.service(ConversionSVC.class).check(sender());
     }
 
-
     @Decree(description = "Edit the biome you are currently in", aliases = {"ebiome", "eb"}, origin = DecreeOrigin.PLAYER)
     public void editbiome(
             @Param(contextual = true, description = "The biome to edit")
@@ -292,7 +327,7 @@ public class CommandStudio implements DecreeExecutor {
         engine().getExecution().execute(script.getLoadKey());
     }
 
-    @Decree(description = "Open the noise explorer (External GUI)", aliases = "nmap")
+    @Decree(description = "Open the noise explorer (External GUI)", aliases = {"nmap", "n"})
     public void noise() {
         if (noGUI()) return;
         sender().sendMessage(C.GREEN + "Opening Noise Explorer!");
@@ -330,66 +365,13 @@ public class CommandStudio implements DecreeExecutor {
         NoiseExplorerGUI.launch(l, "Custom Generator");
     }
 
-    @Decree(description = "Find any biome or region", aliases = {"goto", "g"}, origin = DecreeOrigin.PLAYER)
-    public void find(
-            @Param(description = "The biome or region to find", defaultValue = "null")
-                    IrisBiome biome,
-            @Param(description = "The region to find", defaultValue = "null")
-                    IrisRegion region
-    ) {
-        if (!IrisToolbelt.isIrisWorld(world())) {
-            sender().sendMessage(C.RED + "You must be in an Iris world to use this command!");
-            return;
-        }
-
-        if (biome == null && region == null) {
-            sender().sendMessage(C.RED + "You must specify a biome= or region=!");
-            return;
-        }
-
-        IrisPosition regionPosition = null;
-        if (region != null) {
-            regionPosition = engine().lookForRegion(region, 10000, (v) -> sender().sendMessage("Looking for the " + C.BOLD + C.WHITE + region.getName() + C.RESET + C.GRAY + " region: Checked " + Form.f(v) + " Places"));
-            if (regionPosition == null) {
-                sender().sendMessage(C.YELLOW + "Couldn't find the " + region.getName() + " region.");
-            } else {
-                sender().sendMessage(C.GREEN + "Found the " + region.getName() + " region!.");
-            }
-        }
-
-        IrisPosition biomePosition = null;
-        if (biome != null) {
-            biomePosition = engine().lookForBiome(biome, 10000, (v) -> sender().sendMessage("Looking for the " + C.BOLD + C.WHITE + biome.getName() + C.RESET + C.GRAY + " biome: Checked " + Form.f(v) + " Places"));
-            if (biomePosition == null) {
-                sender().sendMessage(C.YELLOW + "Couldn't find the " + biome.getName() + " biome.");
-            } else {
-                sender().sendMessage(C.GREEN + "Found the " + biome.getName() + " biome!.");
-            }
-        }
-
-        if (regionPosition == null && region != null) {
-            sender().sendMessage(C.RED + "Could not find the region you specified.");
-        } else if (regionPosition != null) {
-            sender().sendMessage(C.GREEN + "Found the region at: " + regionPosition);
-        }
-        if (biomePosition == null && biome != null) {
-            sender().sendMessage(C.RED + "Could not find the biome you specified.");
-        } else if (biomePosition != null) {
-            sender().sendMessage(C.GREEN + "Found the biome at: " + biomePosition);
-        }
-
-        final IrisPosition finalL = regionPosition == null ? biomePosition : regionPosition;
-        if (finalL == null) {
-            return;
-        }
-        J.s(() -> player().teleport(finalL.toLocation(world())));
-    }
-
-    @Decree(description = "Hotload a studio", aliases = "reload", origin = DecreeOrigin.PLAYER)
+    @Decree(description = "Hotload a studio", aliases = {"reload", "h"})
     public void hotload() {
-        if (noStudio()) return;
-
-        access().hotload();
+        if (!Iris.service(StudioSVC.class).isProjectOpen()) {
+            sender().sendMessage(C.RED + "No studio world open!");
+            return;
+        }
+        Iris.service(StudioSVC.class).getActiveProject().getActiveProvider().getEngine().hotload();
         sender().sendMessage(C.GREEN + "Hotloaded");
     }
 
@@ -679,30 +661,16 @@ public class CommandStudio implements DecreeExecutor {
         player().setGameMode(GameMode.SPECTATOR);
     }
 
-    @Decree(description = "Update your dimension project")
+    @Decree(description = "Update your dimension projects VSCode workspace")
     public void update(
             @Param(description = "The dimension to update the workspace of", contextual = true, defaultValue = "overworld")
                     IrisDimension dimension
     ) {
+        sender().sendMessage(C.GOLD + "Updating Code Workspace for " + dimension.getName() + "...");
         if (new IrisProject(dimension.getLoader().getDataFolder()).updateWorkspace()) {
             sender().sendMessage(C.GREEN + "Updated Code Workspace for " + dimension.getName());
         } else {
             sender().sendMessage(C.RED + "Invalid project: " + dimension.getName() + ". Try deleting the code-workspace file and try again.");
-        }
-    }
-
-    @Decree(aliases = {"find-features", "nf"}, description = "Get the noise feature data in your chunk")
-    public void features() {
-
-        if (!IrisToolbelt.isIrisWorld(player().getWorld())) {
-            sender().sendMessage(C.RED + "Iris worlds only");
-            return;
-        }
-
-        int n = 0;
-
-        for (IrisFeaturePositional irisFeaturePositional : engine().getMantle().getFeaturesInChunk(player().getLocation().getChunk())) {
-            sender().sendMessage("#" + n++ + " " + new JSONObject(new Gson().toJson(irisFeaturePositional)).toString(4));
         }
     }
 
@@ -860,37 +828,17 @@ public class CommandStudio implements DecreeExecutor {
                 }
 
                 String n3 = nn3;
-
-                objects.compute(n1, (k1, v1) ->
-                {
-                    //noinspection ReplaceNullCheck
-                    if (v1 == null) {
-                        return new KMap<>();
-                    }
-
-                    return v1;
-                }).compute(n2, (k, v) ->
-                {
-                    if (v == null) {
-                        return new KList<String>().qaddIfMissing(n3);
-                    }
-
-                    v.addIfMissing(n3);
-                    return v;
-                });
+                objects.computeIfAbsent(n1, (k1) -> new KMap<>())
+                        .computeIfAbsent(n2, (k) -> new KList<>()).addIfMissing(n3);
             }
         }
-    }
-
-    public static String hrf(Duration duration) {
-        return duration.toString().substring(2).replaceAll("(\\d[HMS])(?!$)", "$1 ").toLowerCase();
     }
 
     /**
      * @return true if server GUIs are not enabled
      */
     private boolean noGUI() {
-        if (!IrisSettings.get().isUseServerLaunchedGuis()) {
+        if (!IrisSettings.get().getGui().isUseServerLaunchedGuis()) {
             sender().sendMessage(C.RED + "You must have server launched GUIs enabled in the settings!");
             return true;
         }
@@ -902,7 +850,7 @@ public class CommandStudio implements DecreeExecutor {
      */
     private boolean noStudio() {
         if (!sender().isPlayer()) {
-            sender().sendMessage(C.RED + "Players only (this is a config error. Ask support to add DecreeOrigin.PLAYER to the command you tried to run)");
+            sender().sendMessage(C.RED + "Players only!");
             return true;
         }
         if (!Iris.service(StudioSVC.class).isProjectOpen()) {

@@ -19,13 +19,38 @@
 package com.volmit.iris.util.io;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.util.format.Form;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.CharArrayWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -63,6 +88,14 @@ public class IO {
      */
     private static final int DEFAULT_BUFFER_SIZE = 1024 * 4;
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
+    static {
+        // avoid security issues
+        StringWriter buf = new StringWriter(4);
+        PrintWriter out = new PrintWriter(buf);
+        out.println();
+        LINE_SEPARATOR = buf.toString();
+    }
 
     public static String decompress(String gz) throws IOException {
         ByteArrayInputStream bin = new ByteArrayInputStream(Base64.getUrlDecoder().decode(gz));
@@ -128,6 +161,27 @@ public class IO {
         }
 
         return new String(hexChars).toUpperCase();
+    }
+
+    public static String print(byte[] bytes) {
+        return Form.memSize(bytes.length, 2) + "[" + bytesToHex(bytes) + "]";
+    }
+
+    public static String longsToHex(long[] bytes) {
+        byte[] v = new byte[bytes.length * 8];
+
+        for (int i = 0; i < bytes.length; i++) {
+            v[i * 8] = (byte) (bytes[i] >>> 56);
+            v[(i * 8) + 1] = (byte) (bytes[i] >>> 48);
+            v[(i * 8) + 2] = (byte) (bytes[i] >>> 40);
+            v[(i * 8) + 3] = (byte) (bytes[i] >>> 32);
+            v[(i * 8) + 4] = (byte) (bytes[i] >>> 24);
+            v[(i * 8) + 5] = (byte) (bytes[i] >>> 16);
+            v[(i * 8) + 6] = (byte) (bytes[i] >>> 8);
+            v[(i * 8) + 7] = (byte) (bytes[i] >>> 0);
+        }
+
+        return bytesToHex(v);
     }
 
     /**
@@ -207,7 +261,7 @@ public class IO {
      * buffer size. This does NOT close streams.
      *
      * @param in         the input stream to read from
-     * @param out        the output stream to write to
+     * @param out        the output stream to writeNodeData to
      * @param bufferSize the target buffer size
      * @return total size transfered
      * @throws IOException shit happens
@@ -451,6 +505,8 @@ public class IO {
         doCopyFile(srcFile, destFile, preserveFileDate);
     }
 
+    // -----------------------------------------------------------------------
+
     /**
      * Internal copy file method.
      *
@@ -483,8 +539,6 @@ public class IO {
             destFile.setLastModified(srcFile.lastModified());
         }
     }
-
-    // -----------------------------------------------------------------------
 
     /**
      * Unconditionally close an <code>Reader</code>.
@@ -543,6 +597,9 @@ public class IO {
         }
     }
 
+    // read toByteArray
+    // -----------------------------------------------------------------------
+
     /**
      * Unconditionally close an <code>OutputStream</code>.
      * <p>
@@ -561,9 +618,6 @@ public class IO {
             // ignore
         }
     }
-
-    // read toByteArray
-    // -----------------------------------------------------------------------
 
     /**
      * Get the contents of an <code>InputStream</code> as a <code>byte[]</code>.
@@ -623,6 +677,9 @@ public class IO {
         return output.toByteArray();
     }
 
+    // read char[]
+    // -----------------------------------------------------------------------
+
     /**
      * Get the contents of a <code>String</code> as a <code>byte[]</code> using the
      * default character encoding of the platform.
@@ -637,9 +694,6 @@ public class IO {
     public static byte[] toByteArray(String input) {
         return input.getBytes();
     }
-
-    // read char[]
-    // -----------------------------------------------------------------------
 
     /**
      * Get the contents of an <code>InputStream</code> as a character array using
@@ -683,6 +737,9 @@ public class IO {
         return output.toCharArray();
     }
 
+    // read toString
+    // -----------------------------------------------------------------------
+
     /**
      * Get the contents of a <code>Reader</code> as a character array.
      * <p>
@@ -700,9 +757,6 @@ public class IO {
         copy(input, sw);
         return sw.toCharArray();
     }
-
-    // read toString
-    // -----------------------------------------------------------------------
 
     /**
      * Get the contents of an <code>InputStream</code> as a String using the default
@@ -774,6 +828,9 @@ public class IO {
         return new String(input);
     }
 
+    // readLines
+    // -----------------------------------------------------------------------
+
     /**
      * Get the contents of a <code>byte[]</code> as a String using the specified
      * character encoding.
@@ -796,9 +853,6 @@ public class IO {
             return new String(input, encoding);
         }
     }
-
-    // readLines
-    // -----------------------------------------------------------------------
 
     /**
      * Get the contents of an <code>InputStream</code> as a list of Strings, one
@@ -844,6 +898,8 @@ public class IO {
         }
     }
 
+    // -----------------------------------------------------------------------
+
     /**
      * Get the contents of a <code>Reader</code> as a list of Strings, one entry per
      * line.
@@ -868,8 +924,6 @@ public class IO {
         return list;
     }
 
-    // -----------------------------------------------------------------------
-
     /**
      * Convert the specified string to an input stream, encoded as bytes using the
      * default character encoding of the platform.
@@ -882,6 +936,9 @@ public class IO {
         byte[] bytes = input.getBytes();
         return new ByteArrayInputStream(bytes);
     }
+
+    // writeNodeData byte[]
+    // -----------------------------------------------------------------------
 
     /**
      * Convert the specified string to an input stream, encoded as bytes using the
@@ -901,14 +958,11 @@ public class IO {
         return new ByteArrayInputStream(bytes);
     }
 
-    // write byte[]
-    // -----------------------------------------------------------------------
-
     /**
      * Writes bytes from a <code>byte[]</code> to an <code>OutputStream</code>.
      *
-     * @param data   the byte array to write, do not modify during output, null ignored
-     * @param output the <code>OutputStream</code> to write to
+     * @param data   the byte array to writeNodeData, do not modify during output, null ignored
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -925,8 +979,8 @@ public class IO {
      * <p>
      * This method uses {@link String#String(byte[])}.
      *
-     * @param data   the byte array to write, do not modify during output, null ignored
-     * @param output the <code>Writer</code> to write to
+     * @param data   the byte array to writeNodeData, do not modify during output, null ignored
+     * @param output the <code>Writer</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -937,6 +991,9 @@ public class IO {
         }
     }
 
+    // writeNodeData char[]
+    // -----------------------------------------------------------------------
+
     /**
      * Writes bytes from a <code>byte[]</code> to chars on a <code>Writer</code>
      * using the specified character encoding.
@@ -946,8 +1003,8 @@ public class IO {
      * <p>
      * This method uses {@link String#String(byte[], String)}.
      *
-     * @param data     the byte array to write, do not modify during output, null ignored
-     * @param output   the <code>Writer</code> to write to
+     * @param data     the byte array to writeNodeData, do not modify during output, null ignored
+     * @param output   the <code>Writer</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
@@ -963,15 +1020,12 @@ public class IO {
         }
     }
 
-    // write char[]
-    // -----------------------------------------------------------------------
-
     /**
      * Writes chars from a <code>char[]</code> to a <code>Writer</code> using the
      * default character encoding of the platform.
      *
-     * @param data   the char array to write, do not modify during output, null ignored
-     * @param output the <code>Writer</code> to write to
+     * @param data   the char array to writeNodeData, do not modify during output, null ignored
+     * @param output the <code>Writer</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -988,8 +1042,8 @@ public class IO {
      * <p>
      * This method uses {@link String#String(char[])} and {@link String#getBytes()}.
      *
-     * @param data   the char array to write, do not modify during output, null ignored
-     * @param output the <code>OutputStream</code> to write to
+     * @param data   the char array to writeNodeData, do not modify during output, null ignored
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -999,6 +1053,9 @@ public class IO {
             output.write(new String(data).getBytes());
         }
     }
+
+    // writeNodeData String
+    // -----------------------------------------------------------------------
 
     /**
      * Writes chars from a <code>char[]</code> to bytes on an
@@ -1010,8 +1067,8 @@ public class IO {
      * This method uses {@link String#String(char[])} and
      * {@link String#getBytes(String)}.
      *
-     * @param data     the char array to write, do not modify during output, null ignored
-     * @param output   the <code>OutputStream</code> to write to
+     * @param data     the char array to writeNodeData, do not modify during output, null ignored
+     * @param output   the <code>OutputStream</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
@@ -1027,14 +1084,11 @@ public class IO {
         }
     }
 
-    // write String
-    // -----------------------------------------------------------------------
-
     /**
      * Writes chars from a <code>String</code> to a <code>Writer</code>.
      *
-     * @param data   the <code>String</code> to write, null ignored
-     * @param output the <code>Writer</code> to write to
+     * @param data   the <code>String</code> to writeNodeData, null ignored
+     * @param output the <code>Writer</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1052,8 +1106,8 @@ public class IO {
      * <p>
      * This method uses {@link String#getBytes()}.
      *
-     * @param data   the <code>String</code> to write, null ignored
-     * @param output the <code>OutputStream</code> to write to
+     * @param data   the <code>String</code> to writeNodeData, null ignored
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1064,6 +1118,9 @@ public class IO {
         }
     }
 
+    // writeNodeData StringBuffer
+    // -----------------------------------------------------------------------
+
     /**
      * Writes chars from a <code>String</code> to bytes on an
      * <code>OutputStream</code> using the specified character encoding.
@@ -1073,8 +1130,8 @@ public class IO {
      * <p>
      * This method uses {@link String#getBytes(String)}.
      *
-     * @param data     the <code>String</code> to write, null ignored
-     * @param output   the <code>OutputStream</code> to write to
+     * @param data     the <code>String</code> to writeNodeData, null ignored
+     * @param output   the <code>OutputStream</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
@@ -1090,14 +1147,11 @@ public class IO {
         }
     }
 
-    // write StringBuffer
-    // -----------------------------------------------------------------------
-
     /**
      * Writes chars from a <code>StringBuffer</code> to a <code>Writer</code>.
      *
-     * @param data   the <code>StringBuffer</code> to write, null ignored
-     * @param output the <code>Writer</code> to write to
+     * @param data   the <code>StringBuffer</code> to writeNodeData, null ignored
+     * @param output the <code>Writer</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1115,8 +1169,8 @@ public class IO {
      * <p>
      * This method uses {@link String#getBytes()}.
      *
-     * @param data   the <code>StringBuffer</code> to write, null ignored
-     * @param output the <code>OutputStream</code> to write to
+     * @param data   the <code>StringBuffer</code> to writeNodeData, null ignored
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1127,6 +1181,9 @@ public class IO {
         }
     }
 
+    // writeLines
+    // -----------------------------------------------------------------------
+
     /**
      * Writes chars from a <code>StringBuffer</code> to bytes on an
      * <code>OutputStream</code> using the specified character encoding.
@@ -1136,8 +1193,8 @@ public class IO {
      * <p>
      * This method uses {@link String#getBytes(String)}.
      *
-     * @param data     the <code>StringBuffer</code> to write, null ignored
-     * @param output   the <code>OutputStream</code> to write to
+     * @param data     the <code>StringBuffer</code> to writeNodeData, null ignored
+     * @param output   the <code>OutputStream</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if output is null
      * @throws IOException          if an I/O error occurs
@@ -1153,17 +1210,14 @@ public class IO {
         }
     }
 
-    // writeLines
-    // -----------------------------------------------------------------------
-
     /**
      * Writes the <code>toString()</code> value of each item in a collection to an
      * <code>OutputStream</code> line by line, using the default character encoding
      * of the platform and the specified line ending.
      *
-     * @param lines      the lines to write, null entries produce blank lines
+     * @param lines      the lines to writeNodeData, null entries produce blank lines
      * @param lineEnding the line separator to use, null is system default
-     * @param output     the <code>OutputStream</code> to write to, not null, not closed
+     * @param output     the <code>OutputStream</code> to writeNodeData to, not null, not closed
      * @throws NullPointerException if the output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1192,9 +1246,9 @@ public class IO {
      * Character encoding names can be found at
      * <a href="http://www.iana.org/assignments/character-sets">IANA</a>.
      *
-     * @param lines      the lines to write, null entries produce blank lines
+     * @param lines      the lines to writeNodeData, null entries produce blank lines
      * @param lineEnding the line separator to use, null is system default
-     * @param output     the <code>OutputStream</code> to write to, not null, not closed
+     * @param output     the <code>OutputStream</code> to writeNodeData to, not null, not closed
      * @param encoding   the encoding to use, null means platform default
      * @throws NullPointerException if the output is null
      * @throws IOException          if an I/O error occurs
@@ -1220,13 +1274,16 @@ public class IO {
         }
     }
 
+    // copy from InputStream
+    // -----------------------------------------------------------------------
+
     /**
      * Writes the <code>toString()</code> value of each item in a collection to a
      * <code>Writer</code> line by line, using the specified line ending.
      *
-     * @param lines      the lines to write, null entries produce blank lines
+     * @param lines      the lines to writeNodeData, null entries produce blank lines
      * @param lineEnding the line separator to use, null is system default
-     * @param writer     the <code>Writer</code> to write to, not null, not closed
+     * @param writer     the <code>Writer</code> to writeNodeData to, not null, not closed
      * @throws NullPointerException if the input is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1247,9 +1304,6 @@ public class IO {
         }
     }
 
-    // copy from InputStream
-    // -----------------------------------------------------------------------
-
     /**
      * Copy bytes from an <code>InputStream</code> to an <code>OutputStream</code>.
      * <p>
@@ -1262,7 +1316,7 @@ public class IO {
      * <code>copyLarge(InputStream, OutputStream)</code> method.
      *
      * @param input  the <code>InputStream</code> to read from
-     * @param output the <code>OutputStream</code> to write to
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @return the number of bytes copied
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1285,7 +1339,7 @@ public class IO {
      * <code>BufferedInputStream</code>.
      *
      * @param input  the <code>InputStream</code> to read from
-     * @param output the <code>OutputStream</code> to write to
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @return the number of bytes copied
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1312,7 +1366,7 @@ public class IO {
      * This method uses {@link InputStreamReader}.
      *
      * @param input  the <code>InputStream</code> to read from
-     * @param output the <code>Writer</code> to write to
+     * @param output the <code>Writer</code> to writeNodeData to
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1321,6 +1375,9 @@ public class IO {
         InputStreamReader in = new InputStreamReader(input);
         copy(in, output);
     }
+
+    // copy from Reader
+    // -----------------------------------------------------------------------
 
     /**
      * Copy bytes from an <code>InputStream</code> to chars on a <code>Writer</code>
@@ -1335,7 +1392,7 @@ public class IO {
      * This method uses {@link InputStreamReader}.
      *
      * @param input    the <code>InputStream</code> to read from
-     * @param output   the <code>Writer</code> to write to
+     * @param output   the <code>Writer</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1350,9 +1407,6 @@ public class IO {
         }
     }
 
-    // copy from Reader
-    // -----------------------------------------------------------------------
-
     /**
      * Copy chars from a <code>Reader</code> to a <code>Writer</code>.
      * <p>
@@ -1365,7 +1419,7 @@ public class IO {
      * <code>copyLarge(Reader, Writer)</code> method.
      *
      * @param input  the <code>Reader</code> to read from
-     * @param output the <code>Writer</code> to write to
+     * @param output the <code>Writer</code> to writeNodeData to
      * @return the number of characters copied
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1388,7 +1442,7 @@ public class IO {
      * <code>BufferedReader</code>.
      *
      * @param input  the <code>Reader</code> to read from
-     * @param output the <code>Writer</code> to write to
+     * @param output the <code>Writer</code> to writeNodeData to
      * @return the number of characters copied
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1419,7 +1473,7 @@ public class IO {
      * This method uses {@link OutputStreamWriter}.
      *
      * @param input  the <code>Reader</code> to read from
-     * @param output the <code>OutputStream</code> to write to
+     * @param output the <code>OutputStream</code> to writeNodeData to
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
      * @since Commons IO 1.1
@@ -1430,6 +1484,9 @@ public class IO {
         // have to flush here.
         out.flush();
     }
+
+    // content equals
+    // -----------------------------------------------------------------------
 
     /**
      * Copy chars from a <code>Reader</code> to bytes on an
@@ -1448,7 +1505,7 @@ public class IO {
      * This method uses {@link OutputStreamWriter}.
      *
      * @param input    the <code>Reader</code> to read from
-     * @param output   the <code>OutputStream</code> to write to
+     * @param output   the <code>OutputStream</code> to writeNodeData to
      * @param encoding the encoding to use, null means platform default
      * @throws NullPointerException if the input or output is null
      * @throws IOException          if an I/O error occurs
@@ -1464,9 +1521,6 @@ public class IO {
             out.flush();
         }
     }
-
-    // content equals
-    // -----------------------------------------------------------------------
 
     /**
      * Compare the contents of two Streams to determine if they are equal or not.
@@ -1535,13 +1589,5 @@ public class IO {
 
         int ch2 = input2.read();
         return (ch2 == -1);
-    }
-
-    static {
-        // avoid security issues
-        StringWriter buf = new StringWriter(4);
-        PrintWriter out = new PrintWriter(buf);
-        out.println();
-        LINE_SEPARATOR = buf.toString();
     }
 }

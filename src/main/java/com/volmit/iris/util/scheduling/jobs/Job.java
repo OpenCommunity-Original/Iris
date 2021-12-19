@@ -18,6 +18,7 @@
 
 package com.volmit.iris.util.scheduling.jobs;
 
+import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.J;
@@ -54,7 +55,12 @@ public interface Job {
         });
     }
 
+
     default void execute(VolmitSender sender, Runnable whenComplete) {
+        execute(sender, false, whenComplete);
+    }
+
+    default void execute(VolmitSender sender, boolean silentMsg, Runnable whenComplete) {
         PrecisionStopwatch p = PrecisionStopwatch.start();
         CompletableFuture<?> f = J.afut(this::execute);
         int c = J.ar(() -> {
@@ -66,7 +72,9 @@ public interface Job {
         }, sender.isPlayer() ? 0 : 20);
         f.whenComplete((fs, ff) -> {
             J.car(c);
-            sender.sendMessage("Completed " + getName() + " in " + Form.duration(p.getMilliseconds(), 1));
+            if (!silentMsg) {
+                sender.sendMessage(C.AQUA + "Completed " + getName() + " in " + Form.duration(p.getMilliseconds(), 1));
+            }
             whenComplete.run();
         });
     }

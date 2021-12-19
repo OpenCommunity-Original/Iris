@@ -18,7 +18,11 @@
 
 package com.volmit.iris.engine.actuator;
 
-import com.volmit.iris.engine.decorator.*;
+import com.volmit.iris.engine.decorator.IrisCeilingDecorator;
+import com.volmit.iris.engine.decorator.IrisSeaFloorDecorator;
+import com.volmit.iris.engine.decorator.IrisSeaSurfaceDecorator;
+import com.volmit.iris.engine.decorator.IrisShoreLineDecorator;
+import com.volmit.iris.engine.decorator.IrisSurfaceDecorator;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.EngineAssignedActuator;
 import com.volmit.iris.engine.framework.EngineDecorator;
@@ -52,7 +56,7 @@ public class IrisDecorantActuator extends EngineAssignedActuator<BlockData> {
     public IrisDecorantActuator(Engine engine) {
         super(engine, "Decorant");
         shouldRay = shouldRayDecorate();
-        this.rng = new RNG(engine.getTarget().getWorld().seed());
+        this.rng = new RNG(engine.getSeedManager().getDecorator());
         surfaceDecorator = new IrisSurfaceDecorator(getEngine());
         ceilingDecorator = new IrisCeilingDecorator(getEngine());
         seaSurfaceDecorator = new IrisSeaSurfaceDecorator(getEngine());
@@ -74,14 +78,14 @@ public class IrisDecorantActuator extends EngineAssignedActuator<BlockData> {
             int finalI = i;
             burst.queue(() -> {
                 int height;
-                int realX = (int) Math.round(modX(x + finalI));
+                int realX = Math.round(x + finalI);
                 int realZ;
                 IrisBiome biome, cave;
                 for (int j = 0; j < output.getDepth(); j++) {
                     boolean solid;
                     int emptyFor = 0;
                     int lastSolid = 0;
-                    realZ = (int) Math.round(modZ(z + j));
+                    realZ = Math.round(z + j);
                     height = (int) Math.round(getComplex().getHeightStream().get(realX, realZ));
                     biome = getComplex().getTrueBiomeStream().get(realX, realZ);
                     cave = shouldRay ? getComplex().getCaveBiomeStream().get(realX, realZ) : null;
@@ -92,8 +96,8 @@ public class IrisDecorantActuator extends EngineAssignedActuator<BlockData> {
 
                     if (height < getDimension().getFluidHeight()) {
                         getSeaSurfaceDecorator().decorate(finalI, j,
-                                realX, (int) Math.round(modX(x + finalI + 1)), (int) Math.round(modX(x + finalI - 1)),
-                                realZ, (int) Math.round(modZ(z + j + 1)), (int) Math.round(modZ(z + j - 1)),
+                                realX, Math.round(+finalI + 1), Math.round(x + finalI - 1),
+                                realZ, Math.round(z + j + 1), Math.round(z + j - 1),
                                 output, biome, getDimension().getFluidHeight(), getEngine().getHeight());
                         getSeaFloorDecorator().decorate(finalI, j,
                                 realX, realZ, output, biome, height + 1,
@@ -102,8 +106,8 @@ public class IrisDecorantActuator extends EngineAssignedActuator<BlockData> {
 
                     if (height == getDimension().getFluidHeight()) {
                         getShoreLineDecorator().decorate(finalI, j,
-                                realX, (int) Math.round(modX(x + finalI + 1)), (int) Math.round(modX(x + finalI - 1)),
-                                realZ, (int) Math.round(modZ(z + j + 1)), (int) Math.round(modZ(z + j - 1)),
+                                realX, Math.round(x + finalI + 1), Math.round(x + finalI - 1),
+                                realZ, Math.round(z + j + 1), Math.round(z + j - 1),
                                 output, biome, height, getEngine().getHeight());
                     }
 

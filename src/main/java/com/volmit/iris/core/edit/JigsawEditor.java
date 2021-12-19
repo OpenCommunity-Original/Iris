@@ -21,7 +21,11 @@ package com.volmit.iris.core.edit;
 import com.google.gson.Gson;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.service.WandSVC;
-import com.volmit.iris.engine.object.*;
+import com.volmit.iris.engine.object.IrisDirection;
+import com.volmit.iris.engine.object.IrisJigsawPiece;
+import com.volmit.iris.engine.object.IrisJigsawPieceConnector;
+import com.volmit.iris.engine.object.IrisObject;
+import com.volmit.iris.engine.object.IrisPosition;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.data.Cuboid;
 import com.volmit.iris.util.io.IO;
@@ -43,6 +47,7 @@ import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.ExecutionException;
 
 public class JigsawEditor implements Listener {
     public static final KMap<Player, JigsawEditor> editors = new KMap<>();
@@ -53,9 +58,9 @@ public class JigsawEditor implements Listener {
     private final Location origin;
     private final Cuboid cuboid;
     private final int ticker;
-    private Location target;
     private final KMap<IrisPosition, Runnable> falling = new KMap<>();
     private final ChronoLatch cl = new ChronoLatch(100);
+    private Location target;
 
     public JigsawEditor(Player player, IrisJigsawPiece piece, IrisObject object, File saveLocation) {
         if (editors.containsKey(player)) {
@@ -158,9 +163,15 @@ public class JigsawEditor implements Listener {
     public void exit() {
         J.car(ticker);
         Iris.instance.unregisterListener(this);
-        object.unplaceCenterY(origin);
+        try {
+            J.sfut(() -> {
+                object.unplaceCenterY(origin);
+                falling.v().forEach(Runnable::run);
+            }).get();
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
         editors.remove(player);
-        falling.v().forEach(Runnable::run);
     }
 
     public void onTick() {

@@ -22,8 +22,8 @@ import com.google.common.collect.ImmutableList;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.IObjectPlacer;
-import com.volmit.iris.engine.object.IrisFeaturePositional;
 import com.volmit.iris.engine.object.IrisPosition;
 import com.volmit.iris.engine.object.TileData;
 import com.volmit.iris.util.collection.KMap;
@@ -65,7 +65,67 @@ public class MantleWriter implements IObjectPlacer {
         }
     }
 
+    private static Set<IrisPosition> getBallooned(Set<IrisPosition> vset, double radius) {
+        Set<IrisPosition> returnset = new HashSet<>();
+        int ceilrad = (int) Math.ceil(radius);
+
+        for (IrisPosition v : vset) {
+            int tipx = v.getX();
+            int tipy = v.getY();
+            int tipz = v.getZ();
+
+            for (int loopx = tipx - ceilrad; loopx <= tipx + ceilrad; loopx++) {
+                for (int loopy = tipy - ceilrad; loopy <= tipy + ceilrad; loopy++) {
+                    for (int loopz = tipz - ceilrad; loopz <= tipz + ceilrad; loopz++) {
+                        if (hypot(loopx - tipx, loopy - tipy, loopz - tipz) <= radius) {
+                            returnset.add(new IrisPosition(loopx, loopy, loopz));
+                        }
+                    }
+                }
+            }
+        }
+        return returnset;
+    }
+
+    private static Set<IrisPosition> getHollowed(Set<IrisPosition> vset) {
+        Set<IrisPosition> returnset = new KSet<>();
+        for (IrisPosition v : vset) {
+            double x = v.getX();
+            double y = v.getY();
+            double z = v.getZ();
+            if (!(vset.contains(new IrisPosition(x + 1, y, z))
+                    && vset.contains(new IrisPosition(x - 1, y, z))
+                    && vset.contains(new IrisPosition(x, y + 1, z))
+                    && vset.contains(new IrisPosition(x, y - 1, z))
+                    && vset.contains(new IrisPosition(x, y, z + 1))
+                    && vset.contains(new IrisPosition(x, y, z - 1)))) {
+                returnset.add(v);
+            }
+        }
+        return returnset;
+    }
+
+    private static double hypot(double... pars) {
+        double sum = 0;
+        for (double d : pars) {
+            sum += Math.pow(d, 2);
+        }
+        return Math.sqrt(sum);
+    }
+
+    private static double lengthSq(double x, double y, double z) {
+        return (x * x) + (y * y) + (z * z);
+    }
+
+    private static double lengthSq(double x, double z) {
+        return (x * x) + (z * z);
+    }
+
     public <T> void setData(int x, int y, int z, T t) {
+        if (t == null) {
+            return;
+        }
+
         int cx = x >> 4;
         int cz = z >> 4;
 
@@ -82,12 +142,8 @@ public class MantleWriter implements IObjectPlacer {
                 return;
             }
 
-            if (t instanceof IrisFeaturePositional) {
-                chunk.addFeature((IrisFeaturePositional) t);
-            } else {
-                Matter matter = chunk.getOrCreate(y >> 4);
-                matter.slice(matter.getClass(t)).set(x & 15, y & 15, z & 15, t);
-            }
+            Matter matter = chunk.getOrCreate(y >> 4);
+            matter.slice(matter.getClass(t)).set(x & 15, y & 15, z & 15, t);
         }
     }
 
@@ -146,6 +202,11 @@ public class MantleWriter implements IObjectPlacer {
         getEngineMantle().setTile(xx, yy, zz, tile);
     }
 
+    @Override
+    public Engine getEngine() {
+        return getEngineMantle().getEngine();
+    }
+
     /**
      * Set a sphere into the mantle
      *
@@ -161,6 +222,10 @@ public class MantleWriter implements IObjectPlacer {
         setElipsoid(cx, cy, cz, radius, radius, radius, fill, data);
     }
 
+    public <T> void setElipsoid(int cx, int cy, int cz, double rx, double ry, double rz, boolean fill, T data) {
+        setElipsoidFunction(cx, cy, cz, rx, ry, rz, fill, (a, b, c) -> data);
+    }
+
     /**
      * Set an elipsoid into the mantle
      *
@@ -174,7 +239,7 @@ public class MantleWriter implements IObjectPlacer {
      * @param data the data to set
      * @param <T>  the type of data to apply to the mantle
      */
-    public <T> void setElipsoid(int cx, int cy, int cz, double rx, double ry, double rz, boolean fill, T data) {
+    public <T> void setElipsoidFunction(int cx, int cy, int cz, double rx, double ry, double rz, boolean fill, Function3<Integer, Integer, Integer, T> data) {
         rx += 0.5;
         ry += 0.5;
         rz += 0.5;
@@ -217,15 +282,15 @@ public class MantleWriter implements IObjectPlacer {
                         }
                     }
 
-                    setData(x + cx, y + cy, z + cz, data);
-                    setData(-x + cx, y + cy, z + cz, data);
-                    setData(x + cx, -y + cy, z + cz, data);
-                    setData(x + cx, y + cy, -z + cz, data);
-                    setData(-x + cx, y + cy, -z + cz, data);
-                    setData(-x + cx, -y + cy, z + cz, data);
-                    setData(x + cx, -y + cy, -z + cz, data);
-                    setData(-x + cx, y + cy, -z + cz, data);
-                    setData(-x + cx, -y + cy, -z + cz, data);
+                    setData(x + cx, y + cy, z + cz, data.apply(x + cx, y + cy, z + cz));
+                    setData(-x + cx, y + cy, z + cz, data.apply(-x + cx, y + cy, z + cz));
+                    setData(x + cx, -y + cy, z + cz, data.apply(x + cx, -y + cy, z + cz));
+                    setData(x + cx, y + cy, -z + cz, data.apply(x + cx, y + cy, -z + cz));
+                    setData(-x + cx, y + cy, -z + cz, data.apply(-x + cx, y + cy, -z + cz));
+                    setData(-x + cx, -y + cy, z + cz, data.apply(-x + cx, -y + cy, z + cz));
+                    setData(x + cx, -y + cy, -z + cz, data.apply(x + cx, -y + cy, -z + cz));
+                    setData(-x + cx, y + cy, -z + cz, data.apply(-x + cx, y + cy, -z + cz));
+                    setData(-x + cx, -y + cy, -z + cz, data.apply(-x + cx, -y + cy, -z + cz));
                 }
             }
         }
@@ -298,7 +363,6 @@ public class MantleWriter implements IObjectPlacer {
     public <T> void setLine(IrisPosition a, IrisPosition b, double radius, boolean filled, T data) {
         setLine(ImmutableList.of(a, b), radius, filled, data);
     }
-
 
     public <T> void setLine(List<IrisPosition> vectors, double radius, boolean filled, T data) {
         setLineConsumer(vectors, radius, filled, (_x, _y, _z) -> data);
@@ -460,7 +524,15 @@ public class MantleWriter implements IObjectPlacer {
     }
 
     public <T> void set(IrisPosition pos, T data) {
-        setData(pos.getX(), pos.getY(), pos.getZ(), data);
+        try
+        {
+            setData(pos.getX(), pos.getY(), pos.getZ(), data);
+        }
+
+        catch(Throwable e)
+        {
+            Iris.error("No set? " + data.toString() + " for " + pos.toString());
+        }
     }
 
     public <T> void set(List<IrisPosition> positions, T data) {
@@ -479,62 +551,6 @@ public class MantleWriter implements IObjectPlacer {
         for (IrisPosition i : positions) {
             set(i, data.apply(i.getX(), i.getY(), i.getZ()));
         }
-    }
-
-    private static Set<IrisPosition> getBallooned(Set<IrisPosition> vset, double radius) {
-        Set<IrisPosition> returnset = new HashSet<>();
-        int ceilrad = (int) Math.ceil(radius);
-
-        for (IrisPosition v : vset) {
-            int tipx = v.getX();
-            int tipy = v.getY();
-            int tipz = v.getZ();
-
-            for (int loopx = tipx - ceilrad; loopx <= tipx + ceilrad; loopx++) {
-                for (int loopy = tipy - ceilrad; loopy <= tipy + ceilrad; loopy++) {
-                    for (int loopz = tipz - ceilrad; loopz <= tipz + ceilrad; loopz++) {
-                        if (hypot(loopx - tipx, loopy - tipy, loopz - tipz) <= radius) {
-                            returnset.add(new IrisPosition(loopx, loopy, loopz));
-                        }
-                    }
-                }
-            }
-        }
-        return returnset;
-    }
-
-    private static Set<IrisPosition> getHollowed(Set<IrisPosition> vset) {
-        Set<IrisPosition> returnset = new KSet<>();
-        for (IrisPosition v : vset) {
-            double x = v.getX();
-            double y = v.getY();
-            double z = v.getZ();
-            if (!(vset.contains(new IrisPosition(x + 1, y, z))
-                    && vset.contains(new IrisPosition(x - 1, y, z))
-                    && vset.contains(new IrisPosition(x, y + 1, z))
-                    && vset.contains(new IrisPosition(x, y - 1, z))
-                    && vset.contains(new IrisPosition(x, y, z + 1))
-                    && vset.contains(new IrisPosition(x, y, z - 1)))) {
-                returnset.add(v);
-            }
-        }
-        return returnset;
-    }
-
-    private static double hypot(double... pars) {
-        double sum = 0;
-        for (double d : pars) {
-            sum += Math.pow(d, 2);
-        }
-        return Math.sqrt(sum);
-    }
-
-    private static double lengthSq(double x, double y, double z) {
-        return (x * x) + (y * y) + (z * z);
-    }
-
-    private static double lengthSq(double x, double z) {
-        return (x * x) + (z * z);
     }
 
     public boolean isWithin(Vector pos) {

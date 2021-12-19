@@ -27,6 +27,7 @@ import com.volmit.iris.util.function.NastySupplier;
 import com.volmit.iris.util.math.FinalInteger;
 import com.volmit.iris.util.parallel.MultiBurst;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.IllegalPluginAccessException;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -38,6 +39,9 @@ import java.util.function.Supplier;
 @SuppressWarnings("ALL")
 public class J {
     private static int tid = 0;
+    private static KList<Runnable> afterStartup = new KList<>();
+    private static KList<Runnable> afterStartupAsync = new KList<>();
+    private static boolean started = false;
 
     public static void dofor(int a, Function<Integer, Boolean> c, int ch, Consumer<Integer> d) {
         for (int i = a; c.apply(i); i += ch) {
@@ -85,6 +89,9 @@ public class J {
     }
 
     public static void aBukkit(Runnable a) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return;
+        }
         Bukkit.getScheduler().scheduleAsyncDelayedTask(Iris.instance, a);
     }
 
@@ -153,10 +160,6 @@ public class J {
         }
     }
 
-    private static KList<Runnable> afterStartup = new KList<>();
-    private static KList<Runnable> afterStartupAsync = new KList<>();
-    private static boolean started = false;
-
     /**
      * Dont call this unless you know what you are doing!
      */
@@ -219,11 +222,18 @@ public class J {
      * @param r the runnable
      */
     public static void s(Runnable r) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return;
+        }
         Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, r);
     }
 
     public static CompletableFuture sfut(Runnable r) {
         CompletableFuture f = new CompletableFuture();
+
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return null;
+        }
         Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, () -> {
             r.run();
             f.complete(null);
@@ -233,6 +243,10 @@ public class J {
 
     public static CompletableFuture sfut(Runnable r, int delay) {
         CompletableFuture f = new CompletableFuture();
+
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return null;
+        }
         Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, () -> {
             r.run();
             f.complete(null);
@@ -257,6 +271,9 @@ public class J {
      */
     public static void s(Runnable r, int delay) {
         try {
+            if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+                return;
+            }
             Bukkit.getScheduler().scheduleSyncDelayedTask(Iris.instance, r, delay);
         } catch (Throwable e) {
             Iris.reportError(e);
@@ -280,6 +297,9 @@ public class J {
      * @return the task id
      */
     public static int sr(Runnable r, int interval) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return -1;
+        }
         return Bukkit.getScheduler().scheduleSyncRepeatingTask(Iris.instance, r, 0, interval);
     }
 
@@ -314,7 +334,9 @@ public class J {
      */
     @SuppressWarnings("deprecation")
     public static void a(Runnable r, int delay) {
-        Bukkit.getScheduler().scheduleAsyncDelayedTask(Iris.instance, r, delay);
+        if (Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            Bukkit.getScheduler().scheduleAsyncDelayedTask(Iris.instance, r, delay);
+        }
     }
 
     /**
@@ -335,6 +357,9 @@ public class J {
      */
     @SuppressWarnings("deprecation")
     public static int ar(Runnable r, int interval) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(Iris.instance)) {
+            return -1;
+        }
         return Bukkit.getScheduler().scheduleAsyncRepeatingTask(Iris.instance, r, 0, interval);
     }
 

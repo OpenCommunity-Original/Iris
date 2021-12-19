@@ -25,15 +25,21 @@ import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.placer.HeightmapObjectPlacer;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.data.B;
+import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.interpolation.IrisInterpolation;
 import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.math.AxisAlignedBB;
 import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.Position2;
 import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.matter.MatterMarker;
+import com.volmit.iris.util.parallel.BurstExecutor;
+import com.volmit.iris.util.parallel.MultiBurst;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.IrisLock;
+import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -49,8 +55,20 @@ import org.bukkit.block.data.type.Leaves;
 import org.bukkit.util.BlockVector;
 import org.bukkit.util.Vector;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 @SuppressWarnings("DefaultAnnotationParam")
@@ -62,7 +80,15 @@ public class IrisObject extends IrisRegistrant {
     protected static final BlockData VAIR = B.get("VOID_AIR");
     protected static final BlockData VAIR_DEBUG = B.get("COBWEB");
     protected static final BlockData[] SNOW_LAYERS = new BlockData[]{B.get("minecraft:snow[layers=1]"), B.get("minecraft:snow[layers=2]"), B.get("minecraft:snow[layers=3]"), B.get("minecraft:snow[layers=4]"), B.get("minecraft:snow[layers=5]"), B.get("minecraft:snow[layers=6]"), B.get("minecraft:snow[layers=7]"), B.get("minecraft:snow[layers=8]")};
-
+    protected transient final IrisLock readLock = new IrisLock("read-conclock");
+    @Getter
+    @Setter
+    protected transient volatile boolean smartBored = false;
+    @Getter
+    @Setter
+    protected transient IrisLock lock = new IrisLock("Preloadcache");
+    @Setter
+    protected transient AtomicCache<AxisAlignedBB> aabb = new AtomicCache<>();
     private KMap<BlockVector, BlockData> blocks;
     private KMap<BlockVector, TileData<? extends TileState>> states;
     @Getter
@@ -74,18 +100,9 @@ public class IrisObject extends IrisRegistrant {
     @Getter
     @Setter
     private int h;
-    protected transient final IrisLock readLock = new IrisLock("read-conclock");
     @Getter
     @Setter
     private transient BlockVector center;
-    @Getter
-    @Setter
-    protected transient volatile boolean smartBored = false;
-    @Getter
-    @Setter
-    protected transient IrisLock lock = new IrisLock("Preloadcache");
-    @Setter
-    protected transient AtomicCache<AxisAlignedBB> aabb = new AtomicCache<>();
 
     public IrisObject(int w, int h, int d) {
         blocks = new KMap<>();
@@ -100,10 +117,6 @@ public class IrisObject extends IrisRegistrant {
         this(0, 0, 0);
     }
 
-    public AxisAlignedBB getAABB() {
-        return aabb.aquire(() -> getAABBFor(new BlockVector(w, h, d)));
-    }
-
     public static BlockVector getCenterForSize(BlockVector size) {
         return new BlockVector(size.getX() / 2, size.getY() / 2, size.getZ() / 2);
     }
@@ -114,13 +127,47 @@ public class IrisObject extends IrisRegistrant {
                 new IrisPosition(new BlockVector(size.getX() - 1, size.getY() - 1, size.getZ() - 1).subtract(center).toBlockVector()));
     }
 
+    @SuppressWarnings({"resource", "RedundantSuppression"})
+    public static BlockVector sampleSize(File file) throws IOException {
+        FileInputStream in = new FileInputStream(file);
+        DataInputStream din = new DataInputStream(in);
+        BlockVector bv = new BlockVector(din.readInt(), din.readInt(), din.readInt());
+        Iris.later(din::close);
+        return bv;
+    }
+
+    private static List<BlockVector> blocksBetweenTwoPoints(Vector loc1, Vector loc2) {
+        List<BlockVector> locations = new ArrayList<>();
+        int topBlockX = Math.max(loc1.getBlockX(), loc2.getBlockX());
+        int bottomBlockX = Math.min(loc1.getBlockX(), loc2.getBlockX());
+        int topBlockY = Math.max(loc1.getBlockY(), loc2.getBlockY());
+        int bottomBlockY = Math.min(loc1.getBlockY(), loc2.getBlockY());
+        int topBlockZ = Math.max(loc1.getBlockZ(), loc2.getBlockZ());
+        int bottomBlockZ = Math.min(loc1.getBlockZ(), loc2.getBlockZ());
+
+        for (int x = bottomBlockX; x <= topBlockX; x++) {
+            for (int z = bottomBlockZ; z <= topBlockZ; z++) {
+                for (int y = bottomBlockY; y <= topBlockY; y++) {
+                    locations.add(new BlockVector(x, y, z));
+                }
+            }
+        }
+        return locations;
+    }
+
+    public AxisAlignedBB getAABB() {
+        return aabb.aquire(() -> getAABBFor(new BlockVector(w, h, d)));
+    }
+
     public void ensureSmartBored(boolean debug) {
         if (smartBored) {
             return;
         }
 
+        PrecisionStopwatch p = PrecisionStopwatch.start();
+        BlockData vair = debug ? VAIR_DEBUG : VAIR;
         lock.lock();
-        int applied = 0;
+        AtomicInteger applied = new AtomicInteger();
         if (getBlocks().isEmpty()) {
             lock.unlock();
             Iris.warn("Cannot Smart Bore " + getLoadKey() + " because it has 0 blocks in it.");
@@ -140,88 +187,99 @@ public class IrisObject extends IrisRegistrant {
             min.setZ(Math.min(i.getZ(), min.getZ()));
         }
 
+        BurstExecutor burst = MultiBurst.burst.burst();
+
         // Smash X
         for (int rayY = min.getBlockY(); rayY <= max.getBlockY(); rayY++) {
-            for (int rayZ = min.getBlockZ(); rayZ <= max.getBlockZ(); rayZ++) {
-                int start = Integer.MAX_VALUE;
-                int end = Integer.MIN_VALUE;
+            int finalRayY = rayY;
+            burst.queue(() -> {
+                for (int rayZ = min.getBlockZ(); rayZ <= max.getBlockZ(); rayZ++) {
+                    int start = Integer.MAX_VALUE;
+                    int end = Integer.MIN_VALUE;
 
-                for (int ray = min.getBlockX(); ray <= max.getBlockX(); ray++) {
-                    if (getBlocks().containsKey(new BlockVector(ray, rayY, rayZ))) {
-                        start = Math.min(ray, start);
-                        end = Math.max(ray, end);
+                    for (int ray = min.getBlockX(); ray <= max.getBlockX(); ray++) {
+                        if (getBlocks().containsKey(new BlockVector(ray, finalRayY, rayZ))) {
+                            start = Math.min(ray, start);
+                            end = Math.max(ray, end);
+                        }
                     }
-                }
 
-                if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
-                    for (int i = start; i <= end; i++) {
-                        BlockVector v = new BlockVector(i, rayY, rayZ);
+                    if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
+                        for (int i = start; i <= end; i++) {
+                            BlockVector v = new BlockVector(i, finalRayY, rayZ);
 
-                        if (!getBlocks().containsKey(v) || B.isAir(getBlocks().get(v))) {
-                            getBlocks().put(v, debug ? VAIR_DEBUG : VAIR);
-                            applied++;
+                            if (!B.isAir(getBlocks().get(v))) {
+                                getBlocks().computeIfAbsent(v, (vv) -> vair);
+                                applied.getAndIncrement();
+                            }
                         }
                     }
                 }
-            }
+            });
         }
 
         // Smash Y
         for (int rayX = min.getBlockX(); rayX <= max.getBlockX(); rayX++) {
-            for (int rayZ = min.getBlockZ(); rayZ <= max.getBlockZ(); rayZ++) {
-                int start = Integer.MAX_VALUE;
-                int end = Integer.MIN_VALUE;
+            int finalRayX = rayX;
+            burst.queue(() -> {
+                for (int rayZ = min.getBlockZ(); rayZ <= max.getBlockZ(); rayZ++) {
+                    int start = Integer.MAX_VALUE;
+                    int end = Integer.MIN_VALUE;
 
-                for (int ray = min.getBlockY(); ray <= max.getBlockY(); ray++) {
-                    if (getBlocks().containsKey(new BlockVector(rayX, ray, rayZ))) {
-                        start = Math.min(ray, start);
-                        end = Math.max(ray, end);
+                    for (int ray = min.getBlockY(); ray <= max.getBlockY(); ray++) {
+                        if (getBlocks().containsKey(new BlockVector(finalRayX, ray, rayZ))) {
+                            start = Math.min(ray, start);
+                            end = Math.max(ray, end);
+                        }
                     }
-                }
 
-                if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
-                    for (int i = start; i <= end; i++) {
-                        BlockVector v = new BlockVector(rayX, i, rayZ);
+                    if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
+                        for (int i = start; i <= end; i++) {
+                            BlockVector v = new BlockVector(finalRayX, i, rayZ);
 
-                        if (!getBlocks().containsKey(v) || B.isAir(getBlocks().get(v))) {
-                            getBlocks().put(v, debug ? VAIR_DEBUG : VAIR);
-                            applied++;
+                            if (!B.isAir(getBlocks().get(v))) {
+                                getBlocks().computeIfAbsent(v, (vv) -> vair);
+                                applied.getAndIncrement();
+                            }
                         }
                     }
                 }
-            }
+            });
         }
 
         // Smash Z
         for (int rayX = min.getBlockX(); rayX <= max.getBlockX(); rayX++) {
-            for (int rayY = min.getBlockY(); rayY <= max.getBlockY(); rayY++) {
-                int start = Integer.MAX_VALUE;
-                int end = Integer.MIN_VALUE;
+            int finalRayX = rayX;
+            burst.queue(() -> {
+                for (int rayY = min.getBlockY(); rayY <= max.getBlockY(); rayY++) {
+                    int start = Integer.MAX_VALUE;
+                    int end = Integer.MIN_VALUE;
 
-                for (int ray = min.getBlockZ(); ray <= max.getBlockZ(); ray++) {
-                    if (getBlocks().containsKey(new BlockVector(rayX, rayY, ray))) {
-                        start = Math.min(ray, start);
-                        end = Math.max(ray, end);
+                    for (int ray = min.getBlockZ(); ray <= max.getBlockZ(); ray++) {
+                        if (getBlocks().containsKey(new BlockVector(finalRayX, rayY, ray))) {
+                            start = Math.min(ray, start);
+                            end = Math.max(ray, end);
+                        }
                     }
-                }
 
-                if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
-                    for (int i = start; i <= end; i++) {
-                        BlockVector v = new BlockVector(rayX, rayY, i);
+                    if (start != Integer.MAX_VALUE && end != Integer.MIN_VALUE) {
+                        for (int i = start; i <= end; i++) {
+                            BlockVector v = new BlockVector(finalRayX, rayY, i);
 
-                        if (!getBlocks().containsKey(v) || B.isAir(getBlocks().get(v))) {
-                            getBlocks().put(v, debug ? VAIR_DEBUG : VAIR);
-                            applied++;
+                            if (!B.isAir(getBlocks().get(v))) {
+                                getBlocks().computeIfAbsent(v, (vv) -> vair);
+                                applied.getAndIncrement();
+                            }
                         }
                     }
                 }
-            }
+            });
         }
 
-        Iris.verbose("- Applied Smart Bore to " + getLoadKey() + " Filled with " + applied + " VOID_AIR blocks.");
-
+        burst.complete();
         smartBored = true;
         lock.unlock();
+        Iris.debug("Smart Bore: " + getLoadKey() + " in " + Form.duration(p.getMilliseconds(), 2) + " (" + Form.f(applied.get()) + ")");
     }
 
     public synchronized IrisObject copy() {
@@ -238,15 +296,6 @@ public class IrisObject extends IrisRegistrant {
         }
 
         return o;
-    }
-
-    @SuppressWarnings({"resource", "RedundantSuppression"})
-    public static BlockVector sampleSize(File file) throws IOException {
-        FileInputStream in = new FileInputStream(file);
-        DataInputStream din = new DataInputStream(in);
-        BlockVector bv = new BlockVector(din.readInt(), din.readInt(), din.readInt());
-        Iris.later(din::close);
-        return bv;
     }
 
     public void readLegacy(InputStream in) throws IOException {
@@ -363,6 +412,24 @@ public class IrisObject extends IrisRegistrant {
         out.close();
     }
 
+    public void shrinkwrap() {
+        BlockVector min = new BlockVector();
+        BlockVector max = new BlockVector();
+
+        for (BlockVector i : getBlocks().keySet()) {
+            min.setX(Math.min(min.getX(), i.getX()));
+            min.setY(Math.min(min.getY(), i.getY()));
+            min.setZ(Math.min(min.getZ(), i.getZ()));
+            max.setX(Math.max(max.getX(), i.getX()));
+            max.setY(Math.max(max.getY(), i.getY()));
+            max.setZ(Math.max(max.getZ(), i.getZ()));
+        }
+
+        w = max.getBlockX() - min.getBlockX();
+        h = max.getBlockY() - min.getBlockY();
+        d = max.getBlockZ() - min.getBlockZ();
+    }
+
     public void clean() {
         KMap<BlockVector, BlockData> d = new KMap<>();
 
@@ -437,7 +504,7 @@ public class IrisObject extends IrisRegistrant {
     }
 
     public int place(int x, int yv, int z, IObjectPlacer oplacer, IrisObjectPlacement config, RNG rng, Consumer<BlockPosition> listener, CarveResult c, IrisData rdata) {
-        IObjectPlacer placer = (config.getHeightmap() != null) ? new HeightmapObjectPlacer(rng, x, yv, z, config, oplacer) : oplacer;
+        IObjectPlacer placer = (config.getHeightmap() != null) ? new HeightmapObjectPlacer(oplacer.getEngine() == null ? IrisContext.get().getEngine() : oplacer.getEngine(), rng, x, yv, z, config, oplacer) : oplacer;
 
         if (config.isSmartBore()) {
             ensureSmartBored(placer.isDebugSmartBore());
@@ -460,7 +527,7 @@ public class IrisObject extends IrisRegistrant {
         if (yv < 0) {
             if (config.getMode().equals(ObjectPlaceMode.CENTER_HEIGHT)) {
                 y = (c != null ? c.getSurface() : placer.getHighest(x, z, getLoader(), config.isUnderwater())) + rty;
-                if (placer.isCarved(x, y, z) || placer.isCarved(x, y - 1, z)) {
+                if (placer.isCarved(x, y, z) || placer.isCarved(x, y - 1, z) || placer.isCarved(x, y - 2, z) || placer.isCarved(x, y - 3, z)) {
                     bail = true;
                 }
             } else if (config.getMode().equals(ObjectPlaceMode.MAX_HEIGHT) || config.getMode().equals(ObjectPlaceMode.STILT)) {
@@ -471,7 +538,7 @@ public class IrisObject extends IrisRegistrant {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j++) {
                         int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
-                        if (placer.isCarved(i, h, j)) {
+                        if (placer.isCarved(i, h, j) || placer.isCarved(i, h - 1, j) || placer.isCarved(i, h - 2, j) || placer.isCarved(i, h - 3, j)) {
                             bail = true;
                             break;
                         }
@@ -481,7 +548,7 @@ public class IrisObject extends IrisRegistrant {
                         }
                     }
                 }
-            } else if (config.getMode().equals(ObjectPlaceMode.FAST_MAX_HEIGHT) || config.getMode().equals(ObjectPlaceMode.VACUUM) || config.getMode().equals(ObjectPlaceMode.FAST_STILT)) {
+            } else if (config.getMode().equals(ObjectPlaceMode.FAST_MAX_HEIGHT) || config.getMode().equals(ObjectPlaceMode.FAST_STILT)) {
                 BlockVector offset = new BlockVector(config.getTranslate().getX(), config.getTranslate().getY(), config.getTranslate().getZ());
                 BlockVector rotatedDimensions = config.getRotation().rotate(new BlockVector(getW(), getH(), getD()), spinx, spiny, spinz).clone();
 
@@ -489,7 +556,7 @@ public class IrisObject extends IrisRegistrant {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j += (rotatedDimensions.getBlockZ() / 2) + 1) {
                         int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
 
-                        if (placer.isCarved(i, h, j)) {
+                        if (placer.isCarved(i, h, j) || placer.isCarved(i, h - 1, j) || placer.isCarved(i, h - 2, j) || placer.isCarved(i, h - 3, j)) {
                             bail = true;
                             break;
                         }
@@ -507,7 +574,7 @@ public class IrisObject extends IrisRegistrant {
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i++) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j++) {
                         int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
-                        if (placer.isCarved(i, h, j)) {
+                        if (placer.isCarved(i, h, j) || placer.isCarved(i, h - 1, j) || placer.isCarved(i, h - 2, j) || placer.isCarved(i, h - 3, j)) {
                             bail = true;
                             break;
                         }
@@ -524,7 +591,7 @@ public class IrisObject extends IrisRegistrant {
                 for (int i = x - (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i <= x + (rotatedDimensions.getBlockX() / 2) + offset.getBlockX(); i += (rotatedDimensions.getBlockX() / 2) + 1) {
                     for (int j = z - (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j <= z + (rotatedDimensions.getBlockZ() / 2) + offset.getBlockZ(); j += (rotatedDimensions.getBlockZ() / 2) + 1) {
                         int h = placer.getHighest(i, j, getLoader(), config.isUnderwater()) + rty;
-                        if (placer.isCarved(i, h, j)) {
+                        if (placer.isCarved(i, h, j) || placer.isCarved(i, h - 1, j) || placer.isCarved(i, h - 2, j) || placer.isCarved(i, h - 3, j)) {
                             bail = true;
                             break;
                         }
@@ -535,20 +602,20 @@ public class IrisObject extends IrisRegistrant {
                 }
             } else if (config.getMode().equals(ObjectPlaceMode.PAINT)) {
                 y = placer.getHighest(x, z, getLoader(), config.isUnderwater()) + rty;
-                if (placer.isCarved(x, y, z)) {
+                if (placer.isCarved(x, y, z) || placer.isCarved(x, y - 1, z) || placer.isCarved(x, y - 2, z) || placer.isCarved(x, y - 3, z)) {
                     bail = true;
                 }
             }
         } else {
             y = yv;
-            if (placer.isCarved(x, y, z)) {
+            if (placer.isCarved(x, y, z) || placer.isCarved(x, y - 1, z) || placer.isCarved(x, y - 2, z) || placer.isCarved(x, y - 3, z)) {
                 bail = true;
             }
         }
 
         if (yv >= 0 && config.isBottom()) {
             y += Math.floorDiv(h, 2);
-            bail = placer.isCarved(x, y, z);
+            bail = placer.isCarved(x, y, z) || placer.isCarved(x, y - 1, z) || placer.isCarved(x, y - 2, z) || placer.isCarved(x, y - 3, z);
         }
 
         if (bail) {
@@ -587,7 +654,47 @@ public class IrisObject extends IrisRegistrant {
         int lowest = Integer.MAX_VALUE;
         y += yrand;
         readLock.lock();
+
+        KMap<BlockVector, String> markers = null;
+
         try {
+            if (config.getMarkers().isNotEmpty() && placer.getEngine() != null) {
+                markers = new KMap<>();
+                for (IrisObjectMarker j : config.getMarkers()) {
+                    IrisMarker marker = getLoader().getMarkerLoader().load(j.getMarker());
+
+                    if (marker == null) {
+                        continue;
+                    }
+
+                    int max = j.getMaximumMarkers();
+
+                    for (BlockVector i : getBlocks().k().shuffle()) {
+                        if (max <= 0) {
+                            break;
+                        }
+
+                        BlockData data = getBlocks().get(i);
+
+                        for (BlockData k : j.getMark(rdata)) {
+                            if (max <= 0) {
+                                break;
+                            }
+
+                            if (j.isExact() ? k.matches(data) : k.getMaterial().equals(data.getMaterial())) {
+                                boolean a = !blocks.containsKey(new BlockVector(i.clone().add(new BlockVector(0, 1, 0))));
+                                boolean fff = !blocks.containsKey(new BlockVector(i.clone().add(new BlockVector(0, 2, 0))));
+
+                                if ((marker.isEmptyAbove() && a && fff) || !marker.isEmptyAbove()) {
+                                    markers.put(i, j.getMarker());
+                                    max--;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             for (BlockVector g : getBlocks().keySet()) {
                 BlockData d;
                 TileData<? extends TileState> tile = null;
@@ -671,6 +778,10 @@ public class IrisObject extends IrisRegistrant {
 
                 if (listener != null) {
                     listener.accept(new BlockPosition(xx, yy, zz));
+                }
+
+                if (markers != null && markers.containsKey(g)) {
+                    placer.getEngine().getMantle().getMantle().set(xx, yy, zz, new MatterMarker(markers.get(g)));
                 }
 
                 if (!data.getMaterial().equals(Material.AIR) && !data.getMaterial().equals(Material.CAVE_AIR)) {
@@ -989,25 +1100,6 @@ public class IrisObject extends IrisRegistrant {
         }
 
         return r;
-    }
-
-    private static List<BlockVector> blocksBetweenTwoPoints(Vector loc1, Vector loc2) {
-        List<BlockVector> locations = new ArrayList<>();
-        int topBlockX = Math.max(loc1.getBlockX(), loc2.getBlockX());
-        int bottomBlockX = Math.min(loc1.getBlockX(), loc2.getBlockX());
-        int topBlockY = Math.max(loc1.getBlockY(), loc2.getBlockY());
-        int bottomBlockY = Math.min(loc1.getBlockY(), loc2.getBlockY());
-        int topBlockZ = Math.max(loc1.getBlockZ(), loc2.getBlockZ());
-        int bottomBlockZ = Math.min(loc1.getBlockZ(), loc2.getBlockZ());
-
-        for (int x = bottomBlockX; x <= topBlockX; x++) {
-            for (int z = bottomBlockZ; z <= topBlockZ; z++) {
-                for (int y = bottomBlockY; y <= topBlockY; y++) {
-                    locations.add(new BlockVector(x, y, z));
-                }
-            }
-        }
-        return locations;
     }
 
     public int volume() {

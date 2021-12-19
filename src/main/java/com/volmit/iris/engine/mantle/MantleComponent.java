@@ -26,8 +26,6 @@ import com.volmit.iris.util.mantle.Mantle;
 import com.volmit.iris.util.mantle.MantleFlag;
 import com.volmit.iris.util.parallel.BurstExecutor;
 
-import java.util.function.Consumer;
-
 public interface MantleComponent {
     default int getRadius() {
         return getEngineMantle().getRealRadius();
@@ -46,7 +44,7 @@ public interface MantleComponent {
     }
 
     default long seed() {
-        return getEngineMantle().getEngine().getTarget().getWorld().seed();
+        return getEngineMantle().getEngine().getSeedManager().getMantle();
     }
 
     default BurstExecutor burst() {
@@ -62,5 +60,5 @@ public interface MantleComponent {
     MantleFlag getFlag();
 
     @ChunkCoordinates
-    void generateLayer(MantleWriter writer, int x, int z, Consumer<Runnable> post);
+    void generateLayer(MantleWriter writer, int x, int z);
 }
