@@ -38,6 +38,7 @@ import org.bukkit.block.data.type.PointedDripstone;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -305,6 +306,11 @@ public class B {
     }
 
     public static boolean canPlaceOnto(Material mat, Material onto) {
+        if ((onto.equals(CRIMSON_NYLIUM) || onto.equals(WARPED_NYLIUM)) &&
+                (mat.equals(CRIMSON_FUNGUS) || mat.equals(CRIMSON_ROOTS) ||mat.equals(WARPED_FUNGUS) || mat.equals(WARPED_ROOTS) ) ){
+            return true;
+        }
+
         if (isFoliage(mat)) {
             if (!isFoliagePlantable(onto)) {
                 return false;
@@ -439,6 +445,10 @@ public class B {
         return AIR;
     }
 
+    private static synchronized BlockData createBlockData(String s) {
+        return Bukkit.createBlockData(s);
+    }
+
     private static BlockData parseBlockData(String ix) {
         try {
             BlockData bx = null;
@@ -466,15 +476,15 @@ public class B {
 
             if (bx == null) {
                 try {
-                    bx = Bukkit.createBlockData(ix.toLowerCase());
+                    bx = createBlockData(ix.toLowerCase());
                 } catch (Throwable e) {
-
+                    e.printStackTrace();
                 }
             }
 
             if (bx == null) {
                 try {
-                    bx = Bukkit.createBlockData("minecraft:" + ix.toLowerCase());
+                    bx = createBlockData("minecraft:" + ix.toLowerCase());
                 } catch (Throwable e) {
 
                 }
@@ -534,7 +544,7 @@ public class B {
             for (String key : stateMap.keySet()) { //Iterate through every state and check if its valid
                 try {
                     String newState = block + "[" + key + "=" + stateMap.get(key) + "]";
-                    Bukkit.createBlockData(newState);
+                    createBlockData(newState);
                     newStates.put(key, stateMap.get(key));
 
                 } catch (IllegalArgumentException ignored) {
@@ -548,7 +558,7 @@ public class B {
             Iris.debug("Converting " + ix + " to " + newBlock);
 
             try {
-                return Bukkit.createBlockData(newBlock);
+                return createBlockData(newBlock);
             } catch (Throwable e1) {
                 Iris.reportError(e1);
             }
