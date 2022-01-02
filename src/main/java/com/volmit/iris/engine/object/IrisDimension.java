@@ -211,6 +211,10 @@ public class IrisDimension extends IrisRegistrant {
     private KList<IrisShapedGeneratorStyle> overlayNoise = new KList<>();
     @Desc("If true, the spawner system has infinite energy. This is NOT recommended because it would allow for mobs to keep spawning over and over without a rate limit")
     private boolean infiniteEnergy = false;
+    @MinNumber(0)
+    @MaxNumber(10000)
+    @Desc("This is the maximum energy you can have in a dimension")
+    private double maximumEnergy = 1000;
     @MinNumber(0.0001)
     @MaxNumber(512)
     @Desc("The rock zoom mostly for zooming in on a wispy palette")
@@ -221,6 +225,24 @@ public class IrisDimension extends IrisRegistrant {
     private IrisMaterialPalette fluidPalette = new IrisMaterialPalette().qclear().qadd("water");
     @Desc("Cartographer map trade overrides")
     private IrisVillagerOverride patchCartographers = new IrisVillagerOverride().setDisableTrade(false);
+    @Desc("Collection of ores to be generated")
+    @ArrayType(type = IrisOreGenerator.class, min = 1)
+    private KList<IrisOreGenerator> ores = new KList<>();
+
+    public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data) {
+        if (ores.isEmpty()) {
+            return null;
+        }
+        BlockData b = null;
+        for (IrisOreGenerator i : ores) {
+
+            b = i.generate(x,y,z,rng,data);
+            if(b != null ){
+                return b;
+            }
+        }
+        return null;
+    }
 
     public KList<Position2> getStrongholds(long seed) {
         return strongholdsCache.aquire(() -> {
