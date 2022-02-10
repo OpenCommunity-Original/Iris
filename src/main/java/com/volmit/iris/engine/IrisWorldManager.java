@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -205,11 +205,12 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
                             J.a(() -> getMantle().raiseFlag(finalX, finalZ, MantleFlag.INITIAL_SPAWNED_MARKER,
                                 () -> {
                                     J.a(() -> spawnIn(cx, true), RNG.r.i(5, 200));
-                                    getSpawnersFromMarkers(cx).forEach((block, spawners) -> {
+                                    getSpawnersFromMarkers(cx).forEach((blockf, spawners) -> {
                                         if(spawners.isEmpty()) {
                                             return;
                                         }
 
+                                        IrisPosition block = new IrisPosition(blockf.getX(), blockf.getY() + getEngine().getWorld().minHeight(), blockf.getZ());
                                         IrisSpawner s = new KList<>(spawners).getRandom();
                                         spawn(block, s, true);
                                     });
@@ -321,11 +322,12 @@ public class IrisWorldManager extends EngineAssignedWorldManager {
         //@done
 
         if(IrisSettings.get().getWorld().isMarkerEntitySpawningSystem()) {
-            getSpawnersFromMarkers(c).forEach((block, spawners) -> {
+            getSpawnersFromMarkers(c).forEach((blockf, spawners) -> {
                 if(spawners.isEmpty()) {
                     return;
                 }
 
+                IrisPosition block = new IrisPosition(blockf.getX(), blockf.getY() + getEngine().getWorld().minHeight(), blockf.getZ());
                 IrisSpawner s = new KList<>(spawners).getRandom();
                 spawn(block, s, false);
                 J.a(() -> getMantle().raiseFlag(c.getX(), c.getZ(), MantleFlag.INITIAL_SPAWNED_MARKER,

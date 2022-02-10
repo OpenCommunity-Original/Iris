@@ -15,15 +15,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 plugins {
     id 'java'
-    id 'io.freefair.lombok' version '5.2.1'
+    id 'java-library'
+    id "io.freefair.lombok" version "6.3.0"
     id "com.github.johnrengelman.shadow" version "7.1.2"
-    id "de.undercouch.download" version "4.1.2"
+    id "de.undercouch.download" version "5.0.1"
 }
 
 group 'com.volmit.iris'
-version '1.9.6-1.18.X'
+version '1.9.8-1.18.X'
 def nmsVersion = "1.18.1"
 def apiVersion = '1.18'
 def spigotJarVersion = '1.18.1-R0.1-SNAPSHOT'
@@ -35,7 +37,7 @@ def main = 'com.volmit.iris.Iris'
 registerCustomOutputTask('Cyberpwn', 'C://Users/cyberpwn/Documents/development/server/plugins')
 registerCustomOutputTask('Psycho', 'D://Dan/MinecraftDevelopment/server/plugins')
 registerCustomOutputTask('ArcaneArts', 'C://Users/arcane/Documents/development/server/plugins')
-registerCustomOutputTask('Coco', 'C://Users/sjoer/Desktop/MCSM/plugins')
+registerCustomOutputTask('Coco', 'D://Documents/MC/plugins')
 registerCustomOutputTask('Strange', 'D://Servers/1.17 Test Server/plugins')
 // ========================== UNIX ==============================
 registerCustomOutputTaskUnix('CyberpwnLT', '/Users/danielmills/Documents/development/server/plugins')
@@ -65,8 +67,8 @@ processResources {
  * Unified repo
  */
 repositories {
-    mavenLocal{
-        content{
+    mavenLocal {
+        content {
             includeGroup("org.bukkit")
             includeGroup("org.spigotmc")
         }
@@ -129,8 +131,8 @@ dependencies {
     implementation 'com.dfsek:Paralithic:0.4.0'
     implementation 'io.papermc:paperlib:1.0.5'
     implementation "net.kyori:adventure-text-minimessage:4.2.0-SNAPSHOT"
-    implementation "net.kyori:adventure-platform-bukkit:4.0.0" // Dont upgrade yet
-    implementation 'net.kyori:adventure-api:4.9.2' // Dont upgrade yet
+    implementation 'net.kyori:adventure-platform-bukkit:4.0.1' // Dont upgrade yet
+    implementation 'net.kyori:adventure-api:4.9.3' // Dont upgrade yet
 
     // Dynamically Loaded
     implementation 'io.timeandspace:smoothie-map:2.0.2'
@@ -146,8 +148,7 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.12.0'
 }
 
-if(JavaVersion.current().toString() != "17")
-{
+if (JavaVersion.current().toString() != "17") {
     System.err.println()
     System.err.println("=========================================================================================================")
     System.err.println("You must run gradle on Java 17. You are using " + JavaVersion.current())
@@ -183,16 +184,16 @@ task downloadBuildtools(type: Download) {
     group "remapping"
     src 'https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar'
     dest buildToolsJar
-    onlyIf{
+    onlyIf {
         !buildToolsJar.exists()
     }
 }
 
-task downloadSpecialSource(type: Download){
+task downloadSpecialSource(type: Download) {
     group "remapping"
     src 'https://repo.maven.apache.org/maven2/net/md-5/SpecialSource/1.10.0/SpecialSource-1.10.0-shaded.jar'
     dest specialSourceJar
-    onlyIf{
+    onlyIf {
         !specialSourceJar.exists()
     }
 }
@@ -209,7 +210,7 @@ task executeBuildTools(dependsOn: downloadBuildtools, type: JavaExec)
             "craftbukkit",
             "--remap"
     ]
-    onlyIf{
+    onlyIf {
         !buildToolsHint.exists()
     }
 }
@@ -228,7 +229,7 @@ task specialSourceRemapObfuscate(type: JavaExec)
     dependsOn(copyBuildToSpecialSource, downloadSpecialSource, shadowJar)
     workingDir = specialSourceFolder
     classpath = files(specialSourceJar,
-            new File(m2s + "/org/spigotmc/spigot/"+spigotJarVersion+"/spigot-" + spigotJarVersion + "-remapped-mojang.jar"))
+            new File(m2s + "/org/spigotmc/spigot/" + spigotJarVersion + "/spigot-" + spigotJarVersion + "-remapped-mojang.jar"))
     mainClass = "net.md_5.specialsource.SpecialSource"
     args = [
             "--live",
@@ -237,7 +238,7 @@ task specialSourceRemapObfuscate(type: JavaExec)
             "-o",
             ssobfJar.getName(),
             "-m",
-            m2s + "/org/spigotmc/minecraft-server/"+spigotJarVersion+"/minecraft-server-" + spigotJarVersion + "-maps-mojang.txt",
+            m2s + "/org/spigotmc/minecraft-server/" + spigotJarVersion + "/minecraft-server-" + spigotJarVersion + "-maps-mojang.txt",
             "--reverse",
     ]
 }
@@ -248,7 +249,7 @@ task specialSourceRemap(type: JavaExec)
     dependsOn(specialSourceRemapObfuscate)
     workingDir = specialSourceFolder
     classpath = files(specialSourceJar,
-            new File(m2s + "/org/spigotmc/spigot/"+spigotJarVersion+"/spigot-" + spigotJarVersion + "-remapped-obf.jar"))
+            new File(m2s + "/org/spigotmc/spigot/" + spigotJarVersion + "/spigot-" + spigotJarVersion + "-remapped-obf.jar"))
     mainClass = "net.md_5.specialsource.SpecialSource"
     args = [
             "--live",
@@ -257,7 +258,7 @@ task specialSourceRemap(type: JavaExec)
             "-o",
             ssJar.getName(),
             "-m",
-            m2s + "/org/spigotmc/minecraft-server/"+spigotJarVersion+"/minecraft-server-" + spigotJarVersion + "-maps-spigot.csrg"
+            m2s + "/org/spigotmc/minecraft-server/" + spigotJarVersion + "/minecraft-server-" + spigotJarVersion + "-maps-spigot.csrg"
     ]
 }
 
@@ -280,10 +281,8 @@ task iris(type: Copy)
     dependsOn(specialSourceRemap)
 }
 
-
 def registerCustomOutputTask(name, path) {
-    if (!System.properties['os.name'].toLowerCase().contains('windows'))
-    {
+    if (!System.properties['os.name'].toLowerCase().contains('windows')) {
         return;
     }
 
@@ -300,8 +299,7 @@ def registerCustomOutputTask(name, path) {
 }
 
 def registerCustomOutputTaskUnix(name, path) {
-    if(System.properties['os.name'].toLowerCase().contains('windows'))
-    {
+    if (System.properties['os.name'].toLowerCase().contains('windows')) {
         return;
     }
 
@@ -316,4 +314,3 @@ def registerCustomOutputTaskUnix(name, path) {
         }
     }
 }
-

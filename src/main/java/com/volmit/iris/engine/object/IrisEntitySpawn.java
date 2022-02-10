@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,8 +74,10 @@ public class IrisEntitySpawn implements IRare {
             for(int id = 0; id < spawns; id++) {
                 int x = (c.getX() * 16) + rng.i(15);
                 int z = (c.getZ() * 16) + rng.i(15);
-                int h = gen.getHeight(x, z, true);
-                int hf = gen.getHeight(x, z, false);
+                int h = gen.getHeight(x, z, true) - 64;
+                int hf = gen.getHeight(x, z, false) - 64;
+                //int h = gen.getHeight(x, z, true) + gen.getWorld().minHeight();  Will look into this later
+                //int hf = gen.getHeight(x, z, false) + gen.getWorld().minHeight();
                 Location l = switch(getReferenceSpawner().getGroup()) {
                     case NORMAL -> new Location(c.getWorld(), x, hf + 1, z);
                     case CAVE -> gen.getMantle().findMarkers(c.getX(), c.getZ(), MarkerMatter.CAVE_FLOOR)

@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -116,7 +116,7 @@ public class MathHelper {
         if(var0 < var1) {
             return var1;
         } else {
-            return var0 > var2 ? var2 : var0;
+            return Math.min(var0, var2);
         }
     }
 
@@ -124,7 +124,7 @@ public class MathHelper {
         if(var0 < var2) {
             return var2;
         } else {
-            return var0 > var4 ? var4 : var0;
+            return Math.min(var0, var4);
         }
     }
 
@@ -132,7 +132,7 @@ public class MathHelper {
         if(var0 < var1) {
             return var1;
         } else {
-            return var0 > var2 ? var2 : var0;
+            return Math.min(var0, var2);
         }
     }
 
@@ -140,7 +140,7 @@ public class MathHelper {
         if(var0 < var2) {
             return var2;
         } else {
-            return var0 > var4 ? var4 : var0;
+            return Math.min(var0, var4);
         }
     }
 
@@ -169,7 +169,7 @@ public class MathHelper {
             var2 = -var2;
         }
 
-        return var0 > var2 ? var0 : var2;
+        return Math.max(var0, var2);
     }
 
     public static int a(int var0, int var1) {
@@ -334,8 +334,8 @@ public class MathHelper {
         int var3 = (var1 & 16711680) >> 16;
         int var4 = (var0 & '\uff00') >> 8;
         int var5 = (var1 & '\uff00') >> 8;
-        int var6 = (var0 & 255) >> 0;
-        int var7 = (var1 & 255) >> 0;
+        int var6 = (var0 & 255);
+        int var7 = (var1 & 255);
         int var8 = (int) ((float) var2 * (float) var3 / 255.0F);
         int var9 = (int) ((float) var4 * (float) var5 / 255.0F);
         int var10 = (int) ((float) var6 * (float) var7 / 255.0F);
@@ -345,7 +345,7 @@ public class MathHelper {
     public static int a(int var0, float var1, float var2, float var3) {
         int var4 = (var0 & 16711680) >> 16;
         int var5 = (var0 & '\uff00') >> 8;
-        int var6 = (var0 & 255) >> 0;
+        int var6 = (var0 & 255);
         int var7 = (int) ((float) var4 * var1);
         int var8 = (int) ((float) var5 * var2);
         int var9 = (int) ((float) var6 * var3);
@@ -383,7 +383,7 @@ public class MathHelper {
     public static double d(double var0, double var2) {
         double var4 = var2 * var2 + var0 * var0;
         if(Double.isNaN(var4)) {
-            return 0.0D / 0.0;
+            return 0.0D;
         } else {
             boolean var6 = var0 < 0.0D;
             if(var6) {

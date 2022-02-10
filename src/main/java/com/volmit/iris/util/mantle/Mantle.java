@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ import com.volmit.iris.util.parallel.MultiBurst;
 import lombok.Getter;
 import org.bukkit.Chunk;
 
+import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
@@ -537,7 +538,9 @@ public class Mantle {
                 } catch(Throwable e) {
                     Iris.error("Failed to read Tectonic Plate " + file.getAbsolutePath() + " creating a new chunk instead.");
                     Iris.reportError(e);
-                    e.printStackTrace();
+                    if (!(e instanceof EOFException)) {
+                        e.printStackTrace();
+                    }
                     Iris.panic();
                     region = new TectonicPlate(worldHeight, x, z);
                     loadedRegions.put(k, region);

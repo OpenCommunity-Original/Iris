@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ public class INMS {
         return binding;
     }
 
-    public static final String getNMSTag() {
+    public static String getNMSTag() {
         if(IrisSettings.get().getGeneral().isDisableNMS()) {
             return "BUKKIT";
         }
@@ -52,7 +52,7 @@ public class INMS {
         return "BUKKIT";
     }
 
-    private static final INMSBinding bind() {
+    private static INMSBinding bind() {
         String code = getNMSTag();
         Iris.info("Locating NMS Binding for " + code);
 

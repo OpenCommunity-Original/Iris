@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -68,7 +68,7 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
                 return;
             }
 
-            if(yy >= 256 || yy <= 0) { // Yes, skip bedrock
+            if(yy >= getEngine().getWorld().maxHeight() - getEngine().getWorld().minHeight() || yy <= 0) { // Yes, skip bedrock
                 return;
             }
 
@@ -110,7 +110,11 @@ public class IrisCarveModifier extends EngineAssignedModifier<BlockData> {
             } else if(c.isLava()) {
                 output.set(rx, yy, rz, LAVA);
             } else {
-                output.set(rx, yy, rz, AIR);
+                if(getEngine().getDimension().getCaveLavaHeight() > yy) {
+                    output.set(rx, yy, rz, LAVA);
+                } else {
+                    output.set(rx, yy, rz, AIR);
+                }
             }
         };
 

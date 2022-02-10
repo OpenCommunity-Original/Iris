@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -445,7 +445,16 @@ public class B {
     }
 
     private static synchronized BlockData createBlockData(String s) {
-        return Bukkit.createBlockData(s);
+        try {
+            return Bukkit.createBlockData(s);
+        } catch(IllegalArgumentException e) {
+            if(s.contains("[")) {
+                return createBlockData(s.split("\\Q[\\E")[0]);
+            }
+        }
+
+        Iris.error("Can't find block data for " + s);
+        return null;
     }
 
     private static BlockData parseBlockData(String ix) {

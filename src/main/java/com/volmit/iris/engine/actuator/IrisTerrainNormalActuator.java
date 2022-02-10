@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@ import org.bukkit.block.data.BlockData;
 public class IrisTerrainNormalActuator extends EngineAssignedActuator<BlockData> {
     private static final BlockData AIR = Material.AIR.createBlockData();
     private static final BlockData BEDROCK = Material.BEDROCK.createBlockData();
+    private static final BlockData LAVA = Material.LAVA.createBlockData();
     private static final BlockData GLASS = Material.GLASS.createBlockData();
     private static final BlockData CAVE_AIR = Material.CAVE_AIR.createBlockData();
     @Getter
@@ -81,7 +82,6 @@ public class IrisTerrainNormalActuator extends EngineAssignedActuator<BlockData>
      */
     @BlockCoordinates
     public void terrainSliver(int x, int z, int xf, Hunk<BlockData> h) {
-        //
         int zf, realX, realZ, hf, he;
         IrisBiome biome;
         IrisRegion region;
@@ -94,7 +94,6 @@ public class IrisTerrainNormalActuator extends EngineAssignedActuator<BlockData>
             he = (int) Math.round(Math.min(h.getHeight(), getComplex().getHeightStream().get(realX, realZ)));
             hf = Math.round(Math.max(Math.min(h.getHeight(), getDimension().getFluidHeight()), he));
 
-            // this 0 is where we are going to need to modify the world base height, the Zero, not this instance...
             if(hf < 0) {
                 continue;
             }
@@ -103,13 +102,11 @@ public class IrisTerrainNormalActuator extends EngineAssignedActuator<BlockData>
             KList<BlockData> fblocks = null;
             int depth, fdepth;
 
-            // Fluid height and lower
             for(int i = hf; i >= 0; i--) {
-                if(i >= h.getHeight()) { // h.getheight is terrain height
+                if(i >= h.getHeight()) {
                     continue;
                 }
 
-                // will need to change
                 if(i == 0) {
                     if(getDimension().isBedrock()) {
                         h.set(xf, i, zf, BEDROCK);
@@ -134,7 +131,6 @@ public class IrisTerrainNormalActuator extends EngineAssignedActuator<BlockData>
                     continue;
                 }
 
-                // top of surface
                 if(i <= he) {
                     depth = he - i;
                     if(blocks == null) {

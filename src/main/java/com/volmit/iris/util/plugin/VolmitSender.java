@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -234,6 +234,7 @@ public class VolmitSender implements CommandSender {
     }
 
     public void sendProgress(double percent, String thing) {
+        //noinspection IfStatementWithIdenticalBranches
         if(percent < 0) {
             int l = 44;
             int g = (int) (1D * l);

@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -90,7 +90,7 @@ public class SchemaBuilder {
     public JSONObject construct() {
         JSONObject schema = new JSONObject();
         schema.put("$schema", "http://json-schema.org/draft-07/schema#");
-        schema.put("$id", "http://volmit.com/iris-schema/" + root.getSimpleName().toLowerCase() + ".json");
+        schema.put("$id", "https://volmit.com/iris-schema/" + root.getSimpleName().toLowerCase() + ".json");
 
         JSONObject props = buildProperties(root);
 

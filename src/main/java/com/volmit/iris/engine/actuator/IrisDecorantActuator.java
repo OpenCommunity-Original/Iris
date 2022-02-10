@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -96,7 +96,7 @@ public class IrisDecorantActuator extends EngineAssignedActuator<BlockData> {
 
                     if(height < getDimension().getFluidHeight()) {
                         getSeaSurfaceDecorator().decorate(finalI, j,
-                            realX, Math.round(+finalI + 1), Math.round(x + finalI - 1),
+                            realX, Math.round(finalI + 1), Math.round(x + finalI - 1),
                             realZ, Math.round(z + j + 1), Math.round(z + j - 1),
                             output, biome, getDimension().getFluidHeight(), getEngine().getHeight());
                         getSeaFloorDecorator().decorate(finalI, j,

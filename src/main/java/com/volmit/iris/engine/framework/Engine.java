@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -135,6 +135,10 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     void setParallelism(int parallelism);
 
     EngineTarget getTarget();
+
+    default int getMaxHeight() {
+        return getTarget().getWorld().maxHeight();
+    }
 
     default int getMinHeight() {
         return getTarget().getWorld().minHeight();
@@ -280,7 +284,8 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
                 PrecisionStopwatch p = PrecisionStopwatch.start();
                 KMap<Long, Integer> updates = new KMap<>();
                 RNG r = new RNG(Cache.key(c.getX(), c.getZ()));
-                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterCavern.class, (x, y, z, v) -> {
+                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterCavern.class, (x, yf, z, v) -> {
+                    int y = yf + getWorld().minHeight();
                     if(!B.isFluid(c.getBlock(x & 15, y, z & 15).getBlockData())) {
                         return;
                     }
@@ -309,7 +314,8 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
                 });
 
                 updates.forEach((k, v) -> update(Cache.keyX(k), v, Cache.keyZ(k), c, r));
-                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterUpdate.class, (x, y, z, v) -> {
+                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterUpdate.class, (x, yf, z, v) -> {
+                    int y = yf + getWorld().minHeight();
                     if(v != null && v.isUpdate()) {
                         int vx = x & 15;
                         int vz = z & 15;

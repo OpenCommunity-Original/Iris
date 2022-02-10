@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -81,15 +81,6 @@ public class IrisBiomeActuator extends EngineAssignedActuator<Biome> {
                             IrisBiomeCustom custom = ib.getCustomBiome(rng, x, 0, z);
                             Object biomeBase = INMS.get().getCustomBiomeBaseFor(getDimension().getLoadKey() + ":" + custom.getId());
 //
-//                            int m = hits.size();
-//                            String str = ib.getLoadKey() + ":custom:" + custom.getId();
-//                            hits.add(str);
-//
-//                            if(m != hits.size())
-//                            {
-//                                Iris.info("Added " + str);
-//                            }
-
                             if(biomeBase == null || !injectBiome(h, x, 0, z, biomeBase)) {
                                 throw new RuntimeException("Cant inject biome!");
                             }

@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -366,7 +366,7 @@ public class IrisData implements ExclusionStrategy, TypeAdapterFactory {
         if(f.getPath().startsWith(getDataFolder().getPath())) {
             String[] full = f.getPath().split("\\Q" + File.separator + "\\E");
             String[] df = getDataFolder().getPath().split("\\Q" + File.separator + "\\E");
-            String g = "";
+            StringBuilder g = new StringBuilder();
             boolean m = true;
             for(int i = 0; i < full.length; i++) {
                 if(i >= df.length) {
@@ -375,7 +375,7 @@ public class IrisData implements ExclusionStrategy, TypeAdapterFactory {
                         continue;
                     }
 
-                    g += "/" + full[i];
+                    g.append("/").append(full[i]);
                 }
             }
 

@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,8 +74,10 @@ public class IrisDecorator {
     @Desc("The maximum repeat stack height")
     private int stackMax = 1;
     @DependsOn({"stackMin", "stackMax"})
-    @Desc("Changes stackMin and stackMin from being absolute block heights and instead uses them as a percentage to scale the stack based on the cave height" +
-        "\n\nWithin a cave, setting them stackMin/max to 50 would make the stack 50% of the cave height")
+    @Desc("""
+        Changes stackMin and stackMin from being absolute block heights and instead uses them as a percentage to scale the stack based on the cave height
+
+        Within a cave, setting them stackMin/max to 50 would make the stack 50% of the cave height""")
     private boolean scaleStack = false;
     @Required
     @MinNumber(0)

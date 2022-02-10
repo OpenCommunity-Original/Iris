@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +54,6 @@ import java.util.ArrayList;
 import java.util.Objects;
 
 public class WandSVC implements IrisService {
-    private static ItemStack wand;
     private static ItemStack dust;
 
     public static void pasteSchematic(IrisObject s, Location at) {
@@ -268,7 +267,7 @@ public class WandSVC implements IrisService {
 
     @Override
     public void onEnable() {
-        wand = createWand();
+        ItemStack wand = createWand();
         dust = createDust();
 
         J.ar(() -> {

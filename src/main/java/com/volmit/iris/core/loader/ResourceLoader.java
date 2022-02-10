@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -286,16 +286,22 @@ public class ResourceLoader<T extends IrisRegistrant> implements MeteredCache {
     }
 
     public KList<File> getFolders() {
-        if(folderCache.get() == null) {
-            folderCache.set(new KList<>());
 
-            for(File i : root.listFiles()) {
-                if(i.isDirectory()) {
-                    if(i.getName().equals(folderName)) {
-                        folderCache.get().add(i);
-                        break;
+
+        synchronized(folderCache) {
+            if(folderCache.get() == null) {
+                KList<File> fc = new KList<>();
+
+                for(File i : root.listFiles()) {
+                    if(i.isDirectory()) {
+                        if(i.getName().equals(folderName)) {
+                            fc.add(i);
+                            break;
+                        }
                     }
                 }
+
+                folderCache.set(fc);
             }
         }
 

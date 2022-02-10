@@ -1,6 +1,6 @@
 /*
  * Iris is a World Generator for Minecraft Bukkit Servers
- * Copyright (c) 2021 Arcane Arts (Volmit Software)
+ * Copyright (c) 2022 Arcane Arts (Volmit Software)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,7 +60,6 @@ public class IrisPostModifier extends EngineAssignedModifier<BlockData> {
         getEngine().getMetrics().getPost().put(p.getMilliseconds());
     }
 
-    @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     private void post(int currentPostX, int currentPostZ, Hunk<BlockData> currentData, int x, int z) {
         int h = getEngine().getMantle().trueHeight(x, z);
         int ha = getEngine().getMantle().trueHeight(x + 1, z);
