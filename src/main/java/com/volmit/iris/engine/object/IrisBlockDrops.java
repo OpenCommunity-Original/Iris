@@ -56,14 +56,13 @@ public class IrisBlockDrops {
     private boolean replaceVanillaDrops = false;
 
     public boolean shouldDropFor(BlockData data, IrisData rdata) {
-        KList<BlockData> list = this.data.aquire(() ->
-        {
+        KList<BlockData> list = this.data.aquire(() -> {
             KList<BlockData> b = new KList<>();
 
-            for(IrisBlockData i : getBlocks()) {
+            for (IrisBlockData i : getBlocks()) {
                 BlockData dd = i.getBlockData(rdata);
 
-                if(dd != null) {
+                if (dd != null) {
                     b.add(dd);
                 }
             }
@@ -71,8 +70,8 @@ public class IrisBlockDrops {
             return b.removeDuplicates();
         });
 
-        for(BlockData i : list) {
-            if(exactBlocks ? i.equals(data) : i.getMaterial().equals(data.getMaterial())) {
+        for (BlockData i : list) {
+            if (exactBlocks ? i.equals(data) : i.getMaterial().equals(data.getMaterial())) {
                 return true;
             }
         }
@@ -81,8 +80,8 @@ public class IrisBlockDrops {
     }
 
     public void fillDrops(boolean debug, KList<ItemStack> d) {
-        for(IrisLoot i : getDrops()) {
-            if(RNG.r.i(1, i.getRarity()) == i.getRarity()) {
+        for (IrisLoot i : getDrops()) {
+            if (RNG.r.i(1, i.getRarity()) == i.getRarity()) {
                 d.add(i.get(debug, RNG.r));
             }
         }

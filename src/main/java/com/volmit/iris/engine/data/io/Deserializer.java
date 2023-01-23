@@ -18,12 +18,7 @@
 
 package com.volmit.iris.engine.data.io;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URL;
 
 public interface Deserializer<T> {
@@ -31,7 +26,7 @@ public interface Deserializer<T> {
     T fromStream(InputStream stream) throws IOException;
 
     default T fromFile(File file) throws IOException {
-        try(BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
+        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
             return fromStream(bis);
         }
     }
@@ -42,8 +37,8 @@ public interface Deserializer<T> {
     }
 
     default T fromResource(Class<?> clazz, String path) throws IOException {
-        try(InputStream stream = clazz.getClassLoader().getResourceAsStream(path)) {
-            if(stream == null) {
+        try (InputStream stream = clazz.getClassLoader().getResourceAsStream(path)) {
+            if (stream == null) {
                 throw new IOException("resource \"" + path + "\" not found");
             }
             return fromStream(stream);
@@ -51,7 +46,7 @@ public interface Deserializer<T> {
     }
 
     default T fromURL(URL url) throws IOException {
-        try(InputStream stream = url.openStream()) {
+        try (InputStream stream = url.openStream()) {
             return fromStream(stream);
         }
     }

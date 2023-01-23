@@ -20,48 +20,24 @@ package com.volmit.iris.util.stream;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.IRare;
 import com.volmit.iris.engine.object.IrisStyledRange;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.context.ChunkContext;
 import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.function.Function3;
 import com.volmit.iris.util.function.Function4;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.math.RNG;
-import com.volmit.iris.util.stream.arithmetic.AddingStream;
-import com.volmit.iris.util.stream.arithmetic.ClampedStream;
-import com.volmit.iris.util.stream.arithmetic.CoordinateBitShiftLeftStream;
-import com.volmit.iris.util.stream.arithmetic.CoordinateBitShiftRightStream;
-import com.volmit.iris.util.stream.arithmetic.DividingStream;
-import com.volmit.iris.util.stream.arithmetic.FittedStream;
-import com.volmit.iris.util.stream.arithmetic.MaxingStream;
-import com.volmit.iris.util.stream.arithmetic.MinningStream;
-import com.volmit.iris.util.stream.arithmetic.ModuloStream;
-import com.volmit.iris.util.stream.arithmetic.MultiplyingStream;
-import com.volmit.iris.util.stream.arithmetic.OffsetStream;
-import com.volmit.iris.util.stream.arithmetic.RadialStream;
-import com.volmit.iris.util.stream.arithmetic.RoundingDoubleStream;
-import com.volmit.iris.util.stream.arithmetic.SlopeStream;
-import com.volmit.iris.util.stream.arithmetic.SubtractingStream;
-import com.volmit.iris.util.stream.arithmetic.ZoomStream;
-import com.volmit.iris.util.stream.convert.AwareConversionStream2D;
-import com.volmit.iris.util.stream.convert.AwareConversionStream3D;
-import com.volmit.iris.util.stream.convert.CachedConversionStream;
-import com.volmit.iris.util.stream.convert.ConversionStream;
-import com.volmit.iris.util.stream.convert.ForceDoubleStream;
-import com.volmit.iris.util.stream.convert.RoundingStream;
-import com.volmit.iris.util.stream.convert.SelectionStream;
-import com.volmit.iris.util.stream.convert.SignificanceStream;
-import com.volmit.iris.util.stream.convert.To3DStream;
+import com.volmit.iris.util.parallel.BurstExecutor;
+import com.volmit.iris.util.parallel.MultiBurst;
+import com.volmit.iris.util.stream.arithmetic.*;
+import com.volmit.iris.util.stream.convert.*;
 import com.volmit.iris.util.stream.interpolation.Interpolated;
 import com.volmit.iris.util.stream.sources.FunctionStream;
-import com.volmit.iris.util.stream.utility.CachedStream2D;
-import com.volmit.iris.util.stream.utility.CachedStream3D;
-import com.volmit.iris.util.stream.utility.NullSafeStream;
-import com.volmit.iris.util.stream.utility.ProfiledStream;
-import com.volmit.iris.util.stream.utility.SemaphoreStream;
-import com.volmit.iris.util.stream.utility.SynchronizedStream;
+import com.volmit.iris.util.stream.utility.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +48,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     static ProceduralStream<Double> ofDouble(Function2<Double, Double, Double> f) {
         try {
             return of(f, Interpolated.DOUBLE);
-        } catch(IncompatibleClassChangeError e) {
+        } catch (IncompatibleClassChangeError e) {
             Iris.warn(f.toString());
             Iris.reportError(e);
             e.printStackTrace();
@@ -110,7 +86,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     }
 
     default ProceduralStream<T> profile() {
-        return profile(10);
+        return profile(256);
     }
 
     default ProceduralStream<T> profile(int memory) {
@@ -129,8 +105,18 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new AddingStream<>(this, a);
     }
 
+    default ProceduralStream<T> contextInjecting(Function3<ChunkContext, Integer, Integer, T> contextAccessor) {
+        //return this;
+        return new ContextInjectingStream<>(this, contextAccessor);
+    }
+
     default ProceduralStream<T> add(ProceduralStream<Double> a) {
         return add2D((x, z) -> a.get(x, z));
+    }
+
+    default ProceduralStream<T> waste(String name) {
+        return this;
+        //return new WasteDetector<T>(this, name);
     }
 
     default ProceduralStream<T> subtract(ProceduralStream<Double> a) {
@@ -289,7 +275,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         return new To3DStream<T>(this);
     }
 
-    default ProceduralStream<T> cache2D(String name, Engine engine, int size) {
+    default CachedStream2D<T> cache2D(String name, Engine engine, int size) {
         return new CachedStream2D<T>(name, engine, this, size);
     }
 
@@ -353,11 +339,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> ProceduralStream<V> selectRarity(V... types) {
         KList<V> rarityTypes = new KList<>();
         int totalRarity = 0;
-        for(V i : types) {
+        for (V i : types) {
             totalRarity += IRare.get(i);
         }
 
-        for(V i : types) {
+        for (V i : types) {
             rarityTypes.addMultiple(i, totalRarity / IRare.get(i));
         }
 
@@ -370,7 +356,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
 
     default <V> ProceduralStream<IRare> selectRarity(List<V> types, Function<V, IRare> loader) {
         List<IRare> r = new ArrayList<>();
-        for(V f : types) {
+        for (V f : types) {
             r.add(loader.apply(f));
         }
         return selectRarity(r);
@@ -379,11 +365,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> int countPossibilities(List<V> types, Function<V, IRare> loader) {
         KList<V> rarityTypes = new KList<>();
         int totalRarity = 0;
-        for(V i : types) {
+        for (V i : types) {
             totalRarity += IRare.get(loader.apply(i));
         }
 
-        for(V i : types) {
+        for (V i : types) {
             rarityTypes.addMultiple(i, totalRarity / IRare.get(loader.apply(i)));
         }
 
@@ -405,6 +391,48 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
         }, Interpolated.DOUBLE);
     }
 
+    default Hunk<T> fastFill2DParallel(int x, int z) {
+        Hunk<T> hunk = Hunk.newAtomicHunk(16, 16, 1);
+        BurstExecutor e = MultiBurst.burst.burst(256);
+        int i, j;
+
+        for (i = 0; i < 16; i++) {
+            for (j = 0; j < 16; j++) {
+                int fi = i;
+                int fj = j;
+                e.queue(() -> hunk.setRaw(fi, fj, 0, get(x + fi, z + fj)));
+            }
+        }
+
+        e.complete();
+        return hunk;
+    }
+
+    default void fastFill2DParallel(Hunk<T> hunk, BurstExecutor e, int x, int z) {
+        int i, j;
+
+        for (i = 0; i < 16; i++) {
+            for (j = 0; j < 16; j++) {
+                int fi = i;
+                int fj = j;
+                e.queue(() -> hunk.setRaw(fi, fj, 0, get(x + fi, z + fj)));
+            }
+        }
+    }
+
+    default Hunk<T> fastFill2D(int x, int z) {
+        Hunk<T> hunk = Hunk.newArrayHunk(16, 16, 1);
+        int i, j;
+
+        for (i = 0; i < 16; i++) {
+            for (j = 0; j < 16; j++) {
+                hunk.setRaw(i, j, 0, get(x + i, z + j));
+            }
+        }
+
+        return hunk;
+    }
+
     default ProceduralStream<T> fit(double inMin, double inMax, double min, double max) {
         return new FittedStream<T>(this, inMin, inMax, min, max);
     }
@@ -416,11 +444,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill2D(Hunk<V> h, double x, double z, V v, int parallelism) {
         h.compute2D(parallelism, (xx, __, zz, hh) ->
         {
-            for(int i = 0; i < hh.getWidth(); i++) {
-                for(int k = 0; k < hh.getDepth(); k++) {
+            for (int i = 0; i < hh.getWidth(); i++) {
+                for (int k = 0; k < hh.getDepth(); k++) {
                     double n = getDouble(i + x + xx, k + z + zz);
 
-                    for(int j = 0; j < Math.min(h.getHeight(), n); j++) {
+                    for (int j = 0; j < Math.min(h.getHeight(), n); j++) {
                         hh.set(i, j, k, v);
                     }
                 }
@@ -431,11 +459,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill2D(Hunk<V> h, double x, double z, ProceduralStream<V> v, int parallelism) {
         h.compute2D(parallelism, (xx, yy, zz, hh) ->
         {
-            for(int i = 0; i < hh.getWidth(); i++) {
-                for(int k = 0; k < hh.getDepth(); k++) {
+            for (int i = 0; i < hh.getWidth(); i++) {
+                for (int k = 0; k < hh.getDepth(); k++) {
                     double n = getDouble(i + x + xx, k + z + zz);
 
-                    for(int j = 0; j < Math.min(h.getHeight(), n); j++) {
+                    for (int j = 0; j < Math.min(h.getHeight(), n); j++) {
                         hh.set(i, j, k, v.get(i + x + xx, j + yy, k + z + zz));
                     }
                 }
@@ -446,11 +474,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill2DYLocked(Hunk<V> h, double x, double z, V v, int parallelism) {
         h.compute2D(parallelism, (xx, yy, zz, hh) ->
         {
-            for(int i = 0; i < hh.getWidth(); i++) {
-                for(int k = 0; k < hh.getDepth(); k++) {
+            for (int i = 0; i < hh.getWidth(); i++) {
+                for (int k = 0; k < hh.getDepth(); k++) {
                     double n = getDouble(i + x + xx, k + z + zz);
 
-                    for(int j = 0; j < Math.min(h.getHeight(), n); j++) {
+                    for (int j = 0; j < Math.min(h.getHeight(), n); j++) {
                         hh.set(i, j, k, v);
                     }
                 }
@@ -461,11 +489,11 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill2DYLocked(Hunk<V> h, double x, double z, ProceduralStream<V> v, int parallelism) {
         h.compute2D(parallelism, (xx, yy, zz, hh) ->
         {
-            for(int i = 0; i < hh.getWidth(); i++) {
-                for(int k = 0; k < hh.getDepth(); k++) {
+            for (int i = 0; i < hh.getWidth(); i++) {
+                for (int k = 0; k < hh.getDepth(); k++) {
                     double n = getDouble(i + x + xx, k + z + zz);
 
-                    for(int j = 0; j < Math.min(h.getHeight(), n); j++) {
+                    for (int j = 0; j < Math.min(h.getHeight(), n); j++) {
                         hh.set(i, j, k, v.get(i + x + xx, k + z + zz));
                     }
                 }
@@ -476,7 +504,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill3D(Hunk<V> h, double x, int y, double z, V v, int parallelism) {
         h.compute3D(parallelism, (xx, yy, zz, hh) -> hh.iterate((xv, yv, zv) ->
         {
-            if(getDouble(xx + xv + x, yy + yv + y, zz + zv + z) > 0.5) {
+            if (getDouble(xx + xv + x, yy + yv + y, zz + zv + z) > 0.5) {
                 hh.set(xv, yv, zv, v);
             }
         }));
@@ -485,7 +513,7 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     default <V> void fill3D(Hunk<V> h, double x, int y, double z, ProceduralStream<V> v, int parallelism) {
         h.compute3D(parallelism, (xx, yy, zz, hh) -> hh.iterate((xv, yv, zv) ->
         {
-            if(getDouble(xx + xv + x, yy + yv + y, zz + zv + z) > 0.5) {
+            if (getDouble(xx + xv + x, yy + yv + y, zz + zv + z) > 0.5) {
                 hh.set(xv, yv, zv, v.get(xx + xv + x, yy + yv + y, zz + zv + z));
             }
         }));
@@ -530,6 +558,21 @@ public interface ProceduralStream<T> extends ProceduralLayer, Interpolated<T> {
     ProceduralStream<T> getTypedSource();
 
     ProceduralStream<?> getSource();
+
+    default void fillChunk(int x, int z, T[] c) {
+        if (c.length != 256) {
+            throw new RuntimeException("Not 256 Length for chunk get");
+        }
+
+        int xs = x << 4;
+        int zs = z << 4;
+
+        for (int i = 0; i < 16; i++) {
+            for (int j = 0; j < 16; j++) {
+                c[Cache.to1D(i + xs, j + zs, 0, 16, 16)] = get(i + xs, j + zs);
+            }
+        }
+    }
 
     T get(double x, double z);
 

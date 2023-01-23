@@ -24,23 +24,24 @@ plugins {
     id "de.undercouch.download" version "5.0.1"
 }
 
-group 'com.volmit.iris'
-version '1.9.8-1.18.X'
-def nmsVersion = "1.18.1"
-def apiVersion = '1.18'
-def spigotJarVersion = '1.18.1-R0.1-SNAPSHOT'
+version '2.3.13-1.19.3' // Needs to be version specific
+def nmsVersion = "1.19.3" //[NMS]
+def apiVersion = '1.19'
+def specialSourceVersion = '1.11.0' //[NMS]
+def spigotJarVersion = '1.19.3-R0.1-SNAPSHOT' //[NMS]
 def name = getRootProject().getName() // Defined in settings.gradle
 def main = 'com.volmit.iris.Iris'
 
 // ADD YOURSELF AS A NEW LINE IF YOU WANT YOUR OWN BUILD TASK GENERATED
 // ======================== WINDOWS =============================
 registerCustomOutputTask('Cyberpwn', 'C://Users/cyberpwn/Documents/development/server/plugins')
-registerCustomOutputTask('Psycho', 'D://Dan/MinecraftDevelopment/server/plugins')
+registerCustomOutputTask('Psycho', 'C://Dan/MinecraftDevelopment/Server/plugins')
 registerCustomOutputTask('ArcaneArts', 'C://Users/arcane/Documents/development/server/plugins')
 registerCustomOutputTask('Coco', 'D://Documents/MC/plugins')
 registerCustomOutputTask('Strange', 'D://Servers/1.17 Test Server/plugins')
+registerCustomOutputTask('Vatuu', 'D://Minecraft/Servers/1.19.3/plugins')
 // ========================== UNIX ==============================
-registerCustomOutputTaskUnix('CyberpwnLT', '/Users/danielmills/Documents/development/server/plugins')
+registerCustomOutputTaskUnix('CyberpwnLT', '/Users/danielmills/development/server/plugins')
 registerCustomOutputTaskUnix('PsychoLT', '/Users/brianfopiano/Desktop/REMOTES/RemoteMinecraft/plugins')
 // ==============================================================
 
@@ -73,9 +74,8 @@ repositories {
             includeGroup("org.spigotmc")
         }
     }
-    maven { url "https://dl.cloudsmith.io/public/arcane/archive/maven/" }
-    mavenCentral()
-    mavenLocal()
+    maven { url "https://arcanearts.jfrog.io/artifactory/archives" }
+
 }
 
 /**
@@ -120,31 +120,32 @@ configurations.all {
  */
 dependencies {
     // Provided or Classpath
-    compileOnly 'org.projectlombok:lombok:1.18.22'
-    annotationProcessor 'org.projectlombok:lombok:1.18.22'
-    implementation 'org.spigotmc:spigot-api:1.18.1-R0.1-SNAPSHOT'
-    implementation 'me.clip:placeholderapi:2.10.10'
+    compileOnly 'org.projectlombok:lombok:1.18.24'
+    annotationProcessor 'org.projectlombok:lombok:1.18.24'
+    implementation 'org.spigotmc:spigot-api:1.19.3-R0.1-SNAPSHOT'
+    implementation 'me.clip:placeholderapi:2.11.1'
     implementation 'io.th0rgal:oraxen:1.94.0'
-    implementation 'org.bukkit:craftbukkit:1.18.1-R0.1-SNAPSHOT:remapped-mojang'
+    implementation 'org.bukkit:craftbukkit:1.19.3-R0.1-SNAPSHOT:remapped-mojang' //[NMS]
+    implementation 'com.github.LoneDev6:api-itemsadder:3.1.0b'
 
     // Shaded
     implementation 'com.dfsek:Paralithic:0.4.0'
     implementation 'io.papermc:paperlib:1.0.5'
-    implementation "net.kyori:adventure-text-minimessage:4.2.0-SNAPSHOT"
-    implementation 'net.kyori:adventure-platform-bukkit:4.0.1' // Dont upgrade yet
-    implementation 'net.kyori:adventure-api:4.9.3' // Dont upgrade yet
+    implementation "net.kyori:adventure-text-minimessage:4.11.0"
+    implementation 'net.kyori:adventure-platform-bukkit:4.1.0'
+    implementation 'net.kyori:adventure-api:4.11.0'
 
     // Dynamically Loaded
     implementation 'io.timeandspace:smoothie-map:2.0.2'
-    implementation 'it.unimi.dsi:fastutil:8.5.6'
+    implementation 'it.unimi.dsi:fastutil:8.5.8'
     implementation 'com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4.2'
     implementation 'org.zeroturnaround:zt-zip:1.14'
-    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'com.google.code.gson:gson:2.9.0'
     implementation 'org.ow2.asm:asm:9.2'
-    implementation 'com.google.guava:guava:31.0.1-jre'
+    implementation 'com.google.guava:guava:31.1-jre'
     implementation 'bsf:bsf:2.4.0'
     implementation 'rhino:js:1.7R2'
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.0.5'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.0.6'
     implementation 'org.apache.commons:commons-lang3:3.12.0'
 }
 
@@ -191,7 +192,7 @@ task downloadBuildtools(type: Download) {
 
 task downloadSpecialSource(type: Download) {
     group "remapping"
-    src 'https://repo.maven.apache.org/maven2/net/md-5/SpecialSource/1.10.0/SpecialSource-1.10.0-shaded.jar'
+    src 'https://repo.maven.apache.org/maven2/net/md-5/SpecialSource/' + specialSourceVersion + '/SpecialSource-'+specialSourceVersion+'-shaded.jar'
     dest specialSourceJar
     onlyIf {
         !specialSourceJar.exists()
@@ -263,6 +264,10 @@ task specialSourceRemap(type: JavaExec)
 }
 
 tasks.compileJava.dependsOn(executeBuildTools)
+
+compileJava {
+    options.encoding = "UTF-8"
+}
 
 task setup()
 {

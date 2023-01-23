@@ -35,12 +35,12 @@ import lombok.experimental.Accessors;
 @Data
 public class IrisSlopeClip {
     @MinNumber(0)
-    @MaxNumber(255)
+    @MaxNumber(1024)
     @Desc("The minimum slope for placement")
     private double minimumSlope = 0;
 
     @MinNumber(0)
-    @MaxNumber(255)
+    @MaxNumber(1024)
     @Desc("The maximum slope for placement")
     private double maximumSlope = 10;
 
@@ -50,7 +50,7 @@ public class IrisSlopeClip {
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean isValid(double slope) {
-        if(isDefault()) {
+        if (isDefault()) {
             return true;
         }
 

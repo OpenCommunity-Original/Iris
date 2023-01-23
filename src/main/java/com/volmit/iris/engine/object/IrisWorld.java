@@ -21,17 +21,14 @@ package com.volmit.iris.engine.object;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.util.collection.KList;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 import lombok.experimental.Accessors;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.generator.WorldInfo;
 
 import java.io.File;
 import java.util.Collection;
@@ -60,11 +57,11 @@ public class IrisWorld {
 
     private static IrisWorld bindWorld(IrisWorld iw, World world) {
         return iw.name(world.getName())
-            .worldFolder(world.getWorldFolder())
-            .minHeight(world.getMinHeight())
-            .maxHeight(world.getMaxHeight())
-            .realWorld(world)
-            .environment(world.getEnvironment());
+                .worldFolder(world.getWorldFolder())
+                .minHeight(world.getMinHeight())
+                .maxHeight(world.getMaxHeight())
+                .realWorld(world)
+                .environment(world.getEnvironment());
     }
 
     public long getRawWorldSeed() {
@@ -76,13 +73,13 @@ public class IrisWorld {
     }
 
     public boolean tryGetRealWorld() {
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             return true;
         }
 
         World w = Bukkit.getWorld(name);
 
-        if(w != null) {
+        if (w != null) {
             realWorld = w;
             return true;
         }
@@ -96,7 +93,7 @@ public class IrisWorld {
 
     public List<Player> getPlayers() {
 
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             return realWorld().getPlayers();
         }
 
@@ -104,13 +101,21 @@ public class IrisWorld {
     }
 
     public void evacuate() {
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             IrisToolbelt.evacuate(realWorld());
         }
     }
 
+    public void bind(WorldInfo worldInfo) {
+        name(worldInfo.getName())
+                .worldFolder(new File(Bukkit.getWorldContainer(), worldInfo.getName()))
+                .minHeight(worldInfo.getMinHeight())
+                .maxHeight(worldInfo.getMaxHeight())
+                .environment(worldInfo.getEnvironment());
+    }
+
     public void bind(World world) {
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             return;
         }
 
@@ -118,7 +123,7 @@ public class IrisWorld {
     }
 
     public Location spawnLocation() {
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             return realWorld().getSpawnLocation();
         }
 
@@ -127,7 +132,7 @@ public class IrisWorld {
     }
 
     public <T extends Entity> Collection<? extends T> getEntitiesByClass(Class<T> t) {
-        if(hasRealWorld()) {
+        if (hasRealWorld()) {
             return realWorld().getEntitiesByClass(t);
         }
 

@@ -29,14 +29,10 @@ import java.io.IOException;
 @Sliced
 public class CavernMatter extends RawMatter<MatterCavern> {
     public static final MatterCavern EMPTY = new MatterCavern(false, "", (byte) 0);
+    public static final MatterCavern BASIC = new MatterCavern(true, "", (byte) 0);
 
     public CavernMatter() {
         this(1, 1, 1);
-    }
-
-    @Override
-    public Palette<MatterCavern> getGlobalPalette() {
-        return null;
     }
 
     public CavernMatter(int width, int height, int depth) {
@@ -45,6 +41,11 @@ public class CavernMatter extends RawMatter<MatterCavern> {
 
     public static MatterCavern get(String customBiome, int liquid) {
         return new MatterCavern(true, customBiome, (byte) liquid);
+    }
+
+    @Override
+    public Palette<MatterCavern> getGlobalPalette() {
+        return null;
     }
 
     @Override

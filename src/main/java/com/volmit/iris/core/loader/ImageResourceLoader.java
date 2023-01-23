@@ -29,6 +29,7 @@ import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.Set;
 
 public class ImageResourceLoader extends ResourceLoader<IrisImage> {
     public ImageResourceLoader(File root, IrisData idm, String folderName, String resourceTypeName) {
@@ -59,40 +60,56 @@ public class ImageResourceLoader extends ResourceLoader<IrisImage> {
             logLoad(j, img);
             tlt.addAndGet(p.getMilliseconds());
             return img;
-        } catch(Throwable e) {
+        } catch (Throwable e) {
             Iris.reportError(e);
             Iris.warn("Couldn't read " + resourceTypeName + " file: " + j.getPath() + ": " + e.getMessage());
             return null;
         }
     }
 
+    void getPNGFiles(File directory, Set<String> m) {
+        for (File file : directory.listFiles()) {
+            if (file.isFile() && file.getName().endsWith(".png")) {
+                m.add(file.getName().replaceAll("\\Q.png\\E", ""));
+            } else if (file.isDirectory()) {
+                getPNGFiles(file, m);
+            }
+        }
+    }
+
+
     public String[] getPossibleKeys() {
-        if(possibleKeys != null) {
+        if (possibleKeys != null) {
             return possibleKeys;
         }
 
         Iris.debug("Building " + resourceTypeName + " Possibility Lists");
         KSet<String> m = new KSet<>();
 
-        for(File i : getFolders()) {
-            for(File j : i.listFiles()) {
-                if(j.isFile() && j.getName().endsWith(".png")) {
-                    m.add(j.getName().replaceAll("\\Q.png\\E", ""));
-                } else if(j.isDirectory()) {
-                    for(File k : j.listFiles()) {
-                        if(k.isFile() && k.getName().endsWith(".png")) {
-                            m.add(j.getName() + "/" + k.getName().replaceAll("\\Q.png\\E", ""));
-                        } else if(k.isDirectory()) {
-                            for(File l : k.listFiles()) {
-                                if(l.isFile() && l.getName().endsWith(".png")) {
-                                    m.add(j.getName() + "/" + k.getName() + "/" + l.getName().replaceAll("\\Q.png\\E", ""));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+
+        for (File i : getFolders()) {
+            getPNGFiles(i, m);
         }
+
+//        for (File i : getFolders()) {
+//            for (File j : i.listFiles()) {
+//                if (j.isFile() && j.getName().endsWith(".png")) {
+//                    m.add(j.getName().replaceAll("\\Q.png\\E", ""));
+//                } else if (j.isDirectory()) {
+//                    for (File k : j.listFiles()) {
+//                        if (k.isFile() && k.getName().endsWith(".png")) {
+//                            m.add(j.getName() + "/" + k.getName().replaceAll("\\Q.png\\E", ""));
+//                        } else if (k.isDirectory()) {
+//                            for (File l : k.listFiles()) {
+//                                if (l.isFile() && l.getName().endsWith(".png")) {
+//                                    m.add(j.getName() + "/" + k.getName() + "/" + l.getName().replaceAll("\\Q.png\\E", ""));
+//                                }
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
 
         KList<String> v = new KList<>(m);
         possibleKeys = v.toArray(new String[0]);
@@ -100,16 +117,16 @@ public class ImageResourceLoader extends ResourceLoader<IrisImage> {
     }
 
     public File findFile(String name) {
-        for(File i : getFolders(name)) {
-            for(File j : i.listFiles()) {
-                if(j.isFile() && j.getName().endsWith(".png") && j.getName().split("\\Q.\\E")[0].equals(name)) {
+        for (File i : getFolders(name)) {
+            for (File j : i.listFiles()) {
+                if (j.isFile() && j.getName().endsWith(".png") && j.getName().split("\\Q.\\E")[0].equals(name)) {
                     return j;
                 }
             }
 
             File file = new File(i, name + ".png");
 
-            if(file.exists()) {
+            if (file.exists()) {
                 return file;
             }
         }
@@ -124,16 +141,16 @@ public class ImageResourceLoader extends ResourceLoader<IrisImage> {
     }
 
     private IrisImage loadRaw(String name) {
-        for(File i : getFolders(name)) {
-            for(File j : i.listFiles()) {
-                if(j.isFile() && j.getName().endsWith(".png") && j.getName().split("\\Q.\\E")[0].equals(name)) {
+        for (File i : getFolders(name)) {
+            for (File j : i.listFiles()) {
+                if (j.isFile() && j.getName().endsWith(".png") && j.getName().split("\\Q.\\E")[0].equals(name)) {
                     return loadFile(j, name);
                 }
             }
 
             File file = new File(i, name + ".png");
 
-            if(file.exists()) {
+            if (file.exists()) {
                 return loadFile(file, name);
             }
         }

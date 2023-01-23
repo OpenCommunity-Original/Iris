@@ -20,6 +20,7 @@ package com.volmit.iris.util.parallel;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.util.collection.KList;
+import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
@@ -31,6 +32,7 @@ import java.util.concurrent.Future;
 @SuppressWarnings("ALL")
 public class BurstExecutor {
     private final ExecutorService executor;
+    @Getter
     private final KList<Future<?>> futures;
     @Setter
     private boolean multicore = true;
@@ -42,12 +44,12 @@ public class BurstExecutor {
 
     @SuppressWarnings("UnusedReturnValue")
     public Future<?> queue(Runnable r) {
-        if(!multicore) {
+        if (!multicore) {
             r.run();
             return CompletableFuture.completedFuture(null);
         }
 
-        synchronized(futures) {
+        synchronized (futures) {
 
             Future<?> c = executor.submit(r);
             futures.add(c);
@@ -56,16 +58,16 @@ public class BurstExecutor {
     }
 
     public BurstExecutor queue(List<Runnable> r) {
-        if(!multicore) {
-            for(Runnable i : new KList<>(r)) {
+        if (!multicore) {
+            for (Runnable i : new KList<>(r)) {
                 i.run();
             }
 
             return this;
         }
 
-        synchronized(futures) {
-            for(Runnable i : new KList<>(r)) {
+        synchronized (futures) {
+            for (Runnable i : new KList<>(r)) {
                 queue(i);
             }
         }
@@ -74,16 +76,16 @@ public class BurstExecutor {
     }
 
     public BurstExecutor queue(Runnable[] r) {
-        if(!multicore) {
-            for(Runnable i : new KList<>(r)) {
+        if (!multicore) {
+            for (Runnable i : new KList<>(r)) {
                 i.run();
             }
 
             return this;
         }
 
-        synchronized(futures) {
-            for(Runnable i : r) {
+        synchronized (futures) {
+            for (Runnable i : r) {
                 queue(i);
             }
         }
@@ -92,22 +94,22 @@ public class BurstExecutor {
     }
 
     public void complete() {
-        if(!multicore) {
+        if (!multicore) {
             return;
         }
 
-        synchronized(futures) {
-            if(futures.isEmpty()) {
+        synchronized (futures) {
+            if (futures.isEmpty()) {
                 return;
             }
 
             try {
-                for(Future<?> i : futures) {
+                for (Future<?> i : futures) {
                     i.get();
                 }
 
                 futures.clear();
-            } catch(InterruptedException | ExecutionException e) {
+            } catch (InterruptedException | ExecutionException e) {
                 Iris.reportError(e);
             }
         }

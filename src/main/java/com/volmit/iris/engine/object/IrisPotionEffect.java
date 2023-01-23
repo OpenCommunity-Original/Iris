@@ -20,11 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -64,19 +60,19 @@ public class IrisPotionEffect {
         {
             PotionEffectType t = PotionEffectType.LUCK;
 
-            if(getPotionEffect().isEmpty()) {
+            if (getPotionEffect().isEmpty()) {
                 return t;
             }
 
             try {
-                for(PotionEffectType i : PotionEffectType.values()) {
-                    if(i.getName().toUpperCase().replaceAll("\\Q \\E", "_").equals(getPotionEffect())) {
+                for (PotionEffectType i : PotionEffectType.values()) {
+                    if (i.getName().toUpperCase().replaceAll("\\Q \\E", "_").equals(getPotionEffect())) {
                         t = i;
 
                         return t;
                     }
                 }
-            } catch(Throwable e) {
+            } catch (Throwable e) {
                 Iris.reportError(e);
 
             }
@@ -88,10 +84,10 @@ public class IrisPotionEffect {
     }
 
     public void apply(LivingEntity p) {
-        if(strength > -1) {
-            if(p.hasPotionEffect(getRealType())) {
+        if (strength > -1) {
+            if (p.hasPotionEffect(getRealType())) {
                 PotionEffect e = p.getPotionEffect(getRealType());
-                if(e.getAmplifier() > strength) {
+                if (e.getAmplifier() > strength) {
                     return;
                 }
 

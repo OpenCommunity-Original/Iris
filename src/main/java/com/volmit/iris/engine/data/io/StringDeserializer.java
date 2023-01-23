@@ -18,13 +18,7 @@
 
 package com.volmit.iris.engine.data.io;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.StringReader;
+import java.io.*;
 
 public interface StringDeserializer<T> extends Deserializer<T> {
 
@@ -36,14 +30,14 @@ public interface StringDeserializer<T> extends Deserializer<T> {
 
     @Override
     default T fromStream(InputStream stream) throws IOException {
-        try(Reader reader = new InputStreamReader(stream)) {
+        try (Reader reader = new InputStreamReader(stream)) {
             return fromReader(reader);
         }
     }
 
     @Override
     default T fromFile(File file) throws IOException {
-        try(Reader reader = new FileReader(file)) {
+        try (Reader reader = new FileReader(file)) {
             return fromReader(reader);
         }
     }

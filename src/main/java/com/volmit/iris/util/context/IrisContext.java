@@ -24,35 +24,49 @@ import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.scheduling.ChronoLatch;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
-@AllArgsConstructor
 public class IrisContext {
     private static final KMap<Thread, IrisContext> context = new KMap<>();
     private static ChronoLatch cl = new ChronoLatch(60000);
     private final Engine engine;
+    private ChunkContext chunkContext;
+
+    public IrisContext(Engine engine) {
+        this.engine = engine;
+    }
+
+    public static IrisContext getOr(Engine engine) {
+        IrisContext c = get();
+
+        if (c == null) {
+            c = new IrisContext(engine);
+            touch(c);
+        }
+
+        return c;
+    }
 
     public static IrisContext get() {
         return context.get(Thread.currentThread());
     }
 
     public static void touch(IrisContext c) {
-        synchronized(context) {
+        synchronized (context) {
             context.put(Thread.currentThread(), c);
 
-            if(cl.flip()) {
+            if (cl.flip()) {
                 dereference();
             }
         }
     }
 
     public static void dereference() {
-        synchronized(context) {
-            for(Thread i : context.k()) {
-                if(!i.isAlive() || context.get(i).engine.isClosed()) {
-                    if(context.get(i).engine.isClosed()) {
+        synchronized (context) {
+            for (Thread i : context.k()) {
+                if (!i.isAlive() || context.get(i).engine.isClosed()) {
+                    if (context.get(i).engine.isClosed()) {
                         Iris.debug("Dereferenced Context<Engine> " + i.getName() + " " + i.getId());
                     }
 

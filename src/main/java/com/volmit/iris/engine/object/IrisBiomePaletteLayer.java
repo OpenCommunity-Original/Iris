@@ -20,13 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.DependsOn;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.noise.CNG;
@@ -50,13 +44,13 @@ public class IrisBiomePaletteLayer {
     private IrisGeneratorStyle style = NoiseStyle.STATIC.style();
     @DependsOn({"minHeight", "maxHeight"})
     @MinNumber(0)
-    @MaxNumber(256) // TODO: WARNING HEIGHT
+    @MaxNumber(2032) // TODO: WARNING HEIGHT
 
     @Desc("The min thickness of this layer")
     private int minHeight = 1;
     @DependsOn({"minHeight", "maxHeight"})
     @MinNumber(1)
-    @MaxNumber(256) // TODO: WARNING HEIGHT
+    @MaxNumber(2032) // TODO: WARNING HEIGHT
 
     @Desc("The max thickness of this layer")
     private int maxHeight = 1;
@@ -75,11 +69,11 @@ public class IrisBiomePaletteLayer {
     }
 
     public BlockData get(RNG rng, double x, double y, double z, IrisData data) {
-        if(getBlockData(data).isEmpty()) {
+        if (getBlockData(data).isEmpty()) {
             return null;
         }
 
-        if(getBlockData(data).size() == 1) {
+        if (getBlockData(data).size() == 1) {
             return getBlockData(data).get(0);
         }
 
@@ -104,10 +98,10 @@ public class IrisBiomePaletteLayer {
         return blockData.aquire(() ->
         {
             KList<BlockData> blockData = new KList<>();
-            for(IrisBlockData ix : palette) {
+            for (IrisBlockData ix : palette) {
                 BlockData bx = ix.getBlockData(data);
-                if(bx != null) {
-                    for(int i = 0; i < ix.getWeight(); i++) {
+                if (bx != null) {
+                    for (int i = 0; i < ix.getWeight(); i++) {
                         blockData.add(bx);
                     }
                 }

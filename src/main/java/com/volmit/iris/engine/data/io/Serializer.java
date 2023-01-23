@@ -18,19 +18,14 @@
 
 package com.volmit.iris.engine.data.io;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 
 public interface Serializer<T> {
 
     void toStream(T object, OutputStream out) throws IOException;
 
     default void toFile(T object, File file) throws IOException {
-        try(BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file))) {
+        try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file))) {
             toStream(object, bos);
         }
     }

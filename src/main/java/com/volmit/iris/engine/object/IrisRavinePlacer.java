@@ -23,11 +23,7 @@ import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.mantle.MantleWriter;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.RegistryListResource;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.math.RNG;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -64,18 +60,18 @@ public class IrisRavinePlacer implements IRare {
     }
 
     public void generateRavine(MantleWriter mantle, RNG rng, Engine engine, int x, int y, int z, int waterHint) {
-        if(fail.get()) {
+        if (fail.get()) {
             return;
         }
 
-        if(rng.nextInt(rarity) != 0) {
+        if (rng.nextInt(rarity) != 0) {
             return;
         }
 
         IrisData data = engine.getData();
         IrisRavine ravine = getRealRavine(data);
 
-        if(ravine == null) {
+        if (ravine == null) {
             Iris.warn("Unable to locate ravine for generation!");
             fail.set(true);
             return;
@@ -85,7 +81,7 @@ public class IrisRavinePlacer implements IRare {
             int xx = x + rng.nextInt(15);
             int zz = z + rng.nextInt(15);
             ravine.generate(mantle, rng, engine, xx, y, zz, waterHint);
-        } catch(Throwable e) {
+        } catch (Throwable e) {
             e.printStackTrace();
             fail.set(true);
         }

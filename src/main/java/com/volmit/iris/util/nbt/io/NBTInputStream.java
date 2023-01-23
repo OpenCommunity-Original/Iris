@@ -20,20 +20,7 @@ package com.volmit.iris.util.nbt.io;
 
 import com.volmit.iris.engine.data.io.ExceptionBiFunction;
 import com.volmit.iris.engine.data.io.MaxDepthIO;
-import com.volmit.iris.util.nbt.tag.ByteArrayTag;
-import com.volmit.iris.util.nbt.tag.ByteTag;
-import com.volmit.iris.util.nbt.tag.CompoundTag;
-import com.volmit.iris.util.nbt.tag.DoubleTag;
-import com.volmit.iris.util.nbt.tag.EndTag;
-import com.volmit.iris.util.nbt.tag.FloatTag;
-import com.volmit.iris.util.nbt.tag.IntArrayTag;
-import com.volmit.iris.util.nbt.tag.IntTag;
-import com.volmit.iris.util.nbt.tag.ListTag;
-import com.volmit.iris.util.nbt.tag.LongArrayTag;
-import com.volmit.iris.util.nbt.tag.LongTag;
-import com.volmit.iris.util.nbt.tag.ShortTag;
-import com.volmit.iris.util.nbt.tag.StringTag;
-import com.volmit.iris.util.nbt.tag.Tag;
+import com.volmit.iris.util.nbt.tag.*;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -109,7 +96,7 @@ public class NBTInputStream extends DataInputStream implements MaxDepthIO {
         int l = in.readInt();
         int[] data = new int[l];
         IntArrayTag iat = new IntArrayTag(data);
-        for(int i = 0; i < l; i++) {
+        for (int i = 0; i < l; i++) {
             data[i] = in.readInt();
         }
         return iat;
@@ -119,7 +106,7 @@ public class NBTInputStream extends DataInputStream implements MaxDepthIO {
         int l = in.readInt();
         long[] data = new long[l];
         LongArrayTag iat = new LongArrayTag(data);
-        for(int i = 0; i < l; i++) {
+        for (int i = 0; i < l; i++) {
             data[i] = in.readLong();
         }
         return iat;
@@ -129,10 +116,10 @@ public class NBTInputStream extends DataInputStream implements MaxDepthIO {
         byte listType = in.readByte();
         ListTag<?> list = ListTag.createUnchecked(idClassMapping.get(listType));
         int length = in.readInt();
-        if(length < 0) {
+        if (length < 0) {
             length = 0;
         }
-        for(int i = 0; i < length; i++) {
+        for (int i = 0; i < length; i++) {
             list.addUnchecked(in.readTag(listType, in.decrementMaxDepth(maxDepth)));
         }
         return list;
@@ -140,7 +127,7 @@ public class NBTInputStream extends DataInputStream implements MaxDepthIO {
 
     private static CompoundTag readCompound(NBTInputStream in, int maxDepth) throws IOException {
         CompoundTag comp = new CompoundTag();
-        for(int id = in.readByte() & 0xFF; id != 0; id = in.readByte() & 0xFF) {
+        for (int id = in.readByte() & 0xFF; id != 0; id = in.readByte() & 0xFF) {
             String key = in.readUTF();
             Tag<?> element = in.readTag((byte) id, in.decrementMaxDepth(maxDepth));
             comp.put(key, element);
@@ -160,7 +147,7 @@ public class NBTInputStream extends DataInputStream implements MaxDepthIO {
 
     private Tag<?> readTag(byte type, int maxDepth) throws IOException {
         ExceptionBiFunction<NBTInputStream, Integer, ? extends Tag<?>, IOException> f;
-        if((f = readers.get(type)) == null) {
+        if ((f = readers.get(type)) == null) {
             throw new IOException("invalid tag id \"" + type + "\"");
         }
         return f.accept(this, maxDepth);

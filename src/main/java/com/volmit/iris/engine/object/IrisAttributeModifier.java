@@ -18,11 +18,7 @@
 
 package com.volmit.iris.engine.object;
 
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.math.RNG;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -65,13 +61,13 @@ public class IrisAttributeModifier {
     private double chance = 1;
 
     public void apply(RNG rng, ItemMeta meta) {
-        if(rng.nextDouble() < getChance()) {
+        if (rng.nextDouble() < getChance()) {
             meta.addAttributeModifier(getAttribute(), new AttributeModifier(getName(), getAmount(rng), getOperation()));
         }
     }
 
     public void apply(RNG rng, Attributable meta) {
-        if(rng.nextDouble() < getChance()) {
+        if (rng.nextDouble() < getChance()) {
             meta.getAttribute(getAttribute()).addModifier(new AttributeModifier(getName(), getAmount(rng), getOperation()));
         }
     }

@@ -19,6 +19,7 @@
 package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.engine.object.IrisBiome;
 import com.volmit.iris.engine.object.IrisEffect;
 import com.volmit.iris.engine.object.IrisRegion;
@@ -48,23 +49,26 @@ public class EnginePlayer {
     public void tick() {
         sample();
 
+        if (!IrisSettings.get().getWorld().isEffectSystem())
+            return;
+
         J.a(() -> {
-            if(region != null) {
-                for(IrisEffect j : region.getEffects()) {
+            if (region != null) {
+                for (IrisEffect j : region.getEffects()) {
                     try {
                         j.apply(player, getEngine());
-                    } catch(Throwable e) {
+                    } catch (Throwable e) {
                         Iris.reportError(e);
 
                     }
                 }
             }
 
-            if(biome != null) {
-                for(IrisEffect j : biome.getEffects()) {
+            if (biome != null) {
+                for (IrisEffect j : biome.getEffects()) {
                     try {
                         j.apply(player, getEngine());
-                    } catch(Throwable e) {
+                    } catch (Throwable e) {
                         Iris.reportError(e);
 
                     }
@@ -79,12 +83,12 @@ public class EnginePlayer {
 
     public void sample() {
         try {
-            if(ticksSinceLastSample() > 55 && player.getLocation().distanceSquared(lastLocation) > 9 * 9) {
+            if (ticksSinceLastSample() > 55 && player.getLocation().distanceSquared(lastLocation) > 9 * 9) {
                 lastLocation = player.getLocation().clone();
                 lastSample = M.ms();
                 sampleBiomeRegion();
             }
-        } catch(Throwable e) {
+        } catch (Throwable e) {
             Iris.reportError(e);
 
         }

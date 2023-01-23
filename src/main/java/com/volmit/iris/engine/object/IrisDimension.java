@@ -22,12 +22,7 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.RegistryListResource;
-import com.volmit.iris.engine.object.annotations.Required;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.data.DataProvider;
 import com.volmit.iris.util.io.IO;
@@ -57,6 +52,23 @@ import java.io.IOException;
 public class IrisDimension extends IrisRegistrant {
     public static final BlockData STONE = Material.STONE.createBlockData();
     public static final BlockData WATER = Material.WATER.createBlockData();
+    private static final String DP_OVERWORLD_DEFAULT = """
+            {
+                "ultrawarm": false,
+                "natural": true,
+                "coordinate_scale": 1.0,
+                "has_skylight": true,
+                "has_ceiling": false,
+                "ambient_light": 0,
+                "piglin_safe": false,
+                "bed_works": true,
+                "respawn_anchor_works": true,
+                "has_raids": true,
+                "monster_spawn_block_light_limit": 7,
+                "monster_spawn_light_level": 7,
+                "infiniburn": "#minecraft:infiniburn_overworld",
+                "effects": "minecraft:overworld"
+            }""";
     private final transient AtomicCache<Position2> parallaxSize = new AtomicCache<>();
     private final transient AtomicCache<CNG> rockLayerGenerator = new AtomicCache<>();
     private final transient AtomicCache<CNG> fluidLayerGenerator = new AtomicCache<>();
@@ -70,6 +82,10 @@ public class IrisDimension extends IrisRegistrant {
     @Required
     @Desc("The human readable name of this dimension")
     private String name = "A Dimension";
+    @MinNumber(1)
+    @MaxNumber(2032)
+    @Desc("Maximum height at which players can be teleported to through gameplay.")
+    private int logicalHeight = 256;
     @RegistryListResource(IrisJigsawStructure.class)
     @Desc("If defined, Iris will place the given jigsaw structure where minecraft should place the overworld stronghold.")
     private String stronghold;
@@ -153,7 +169,7 @@ public class IrisDimension extends IrisRegistrant {
     private KList<IrisJigsawStructurePlacement> jigsawStructures = new KList<>();
     @Required
     @MinNumber(0)
-    @MaxNumber(255)
+    @MaxNumber(1024)
     @Desc("The fluid height for this dimension")
     private int fluidHeight = 63;
     @Desc("Define the min and max Y bounds of this dimension. Please keep in mind that Iris internally generates from 0 to (max - min). \n\nFor example at -64 to 320, Iris is internally generating to 0 to 384, then on outputting chunks, it shifts it down by the min height (64 blocks). The default is -64 to 320. \n\nThe fluid height is placed at (fluid height + min height). So a fluid height of 63 would actually show up in the world at 1.")
@@ -223,8 +239,6 @@ public class IrisDimension extends IrisRegistrant {
     private IrisMaterialPalette rockPalette = new IrisMaterialPalette().qclear().qadd("stone");
     @Desc("The palette of blocks for 'water'")
     private IrisMaterialPalette fluidPalette = new IrisMaterialPalette().qclear().qadd("water");
-//    @Desc("Cartographer map trade overrides")
-//    private IrisVillagerOverride patchCartographers = new IrisVillagerOverride().setDisableTrade(false);
     @Desc("Remove cartographers so they do not crash the server (Iris worlds only)")
     private boolean removeCartographersDueToCrash = true;
     @Desc("Notify players of cancelled cartographer villager in this radius in blocks (set to -1 to disable, -2 for everyone)")
@@ -238,24 +252,22 @@ public class IrisDimension extends IrisRegistrant {
     private int caveLavaHeight = 8;
 
     public int getMaxHeight() {
-        return 320;
-        // return (int) getDimensionHeight().getMax();
+        return (int) getDimensionHeight().getMax();
     }
 
     public int getMinHeight() {
-        return -64;
-        // return (int) getDimensionHeight().getMin();
+        return (int) getDimensionHeight().getMin();
     }
 
     public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data) {
-        if(ores.isEmpty()) {
+        if (ores.isEmpty()) {
             return null;
         }
         BlockData b = null;
-        for(IrisOreGenerator i : ores) {
+        for (IrisOreGenerator i : ores) {
 
             b = i.generate(x, y, z, rng, data);
-            if(b != null) {
+            if (b != null) {
                 return b;
             }
         }
@@ -268,11 +280,11 @@ public class IrisDimension extends IrisRegistrant {
             int jump = strongholdJumpDistance;
             RNG rng = new RNG((seed * 223) + 12945);
 
-            for(int i = 0; i < maxStrongholds + 1; i++) {
+            for (int i = 0; i < maxStrongholds + 1; i++) {
                 int m = i + 1;
                 pos.add(new Position2(
-                    (int) ((rng.i(jump * i) + (jump * i)) * (rng.b() ? -1D : 1D)),
-                    (int) ((rng.i(jump * i) + (jump * i)) * (rng.b() ? -1D : 1D))
+                        (int) ((rng.i(jump * i) + (jump * i)) * (rng.b() ? -1D : 1D)),
+                        (int) ((rng.i(jump * i) + (jump * i)) * (rng.b() ? -1D : 1D))
                 ));
             }
 
@@ -280,6 +292,10 @@ public class IrisDimension extends IrisRegistrant {
 
             return pos;
         });
+    }
+
+    public int getFluidHeight() {
+        return fluidHeight - (int) dimensionHeight.getMin();
     }
 
     public CNG getCoordFracture(RNG rng, int signature) {
@@ -318,7 +334,7 @@ public class IrisDimension extends IrisRegistrant {
     public KList<IrisRegion> getAllRegions(DataProvider g) {
         KList<IrisRegion> r = new KList<>();
 
-        for(String i : getRegions()) {
+        for (String i : getRegions()) {
             r.add(g.getData().getRegionLoader().load(i));
         }
 
@@ -328,7 +344,7 @@ public class IrisDimension extends IrisRegistrant {
     public KList<IrisRegion> getAllAnyRegions() {
         KList<IrisRegion> r = new KList<>();
 
-        for(String i : getRegions()) {
+        for (String i : getRegions()) {
             r.add(IrisData.loadAnyRegion(i));
         }
 
@@ -342,8 +358,8 @@ public class IrisDimension extends IrisRegistrant {
     public KList<IrisBiome> getAllAnyBiomes() {
         KList<IrisBiome> r = new KList<>();
 
-        for(IrisRegion i : getAllAnyRegions()) {
-            if(i == null) {
+        for (IrisRegion i : getAllAnyRegions()) {
+            if (i == null) {
                 continue;
             }
 
@@ -354,7 +370,7 @@ public class IrisDimension extends IrisRegistrant {
     }
 
     public IrisGeneratorStyle getBiomeStyle(InferredType type) {
-        switch(type) {
+        switch (type) {
             case CAVE:
                 return caveBiomeStyle;
             case LAND:
@@ -376,14 +392,14 @@ public class IrisDimension extends IrisRegistrant {
 
         IO.delete(new File(datapacks, "iris/data/" + getLoadKey().toLowerCase()));
 
-        for(IrisBiome i : getAllBiomes(data)) {
-            if(i.isCustom()) {
+        for (IrisBiome i : getAllBiomes(data)) {
+            if (i.isCustom()) {
                 write = true;
 
-                for(IrisBiomeCustom j : i.getCustomDerivitives()) {
+                for (IrisBiomeCustom j : i.getCustomDerivitives()) {
                     File output = new File(datapacks, "iris/data/" + getLoadKey().toLowerCase() + "/worldgen/biome/" + j.getId() + ".json");
 
-                    if(!output.exists()) {
+                    if (!output.exists()) {
                         changed = true;
                     }
 
@@ -391,7 +407,7 @@ public class IrisDimension extends IrisRegistrant {
                     output.getParentFile().mkdirs();
                     try {
                         IO.writeAll(output, j.generateJson());
-                    } catch(IOException e) {
+                    } catch (IOException e) {
                         Iris.reportError(e);
                         e.printStackTrace();
                     }
@@ -399,18 +415,23 @@ public class IrisDimension extends IrisRegistrant {
             }
         }
 
-        if(write) {
+        if (!dimensionHeight.equals(new IrisRange(-64, 320)) && this.name.equalsIgnoreCase("overworld")) {
+            Iris.verbose("    Installing Data Pack Dimension Type: \"minecraft:overworld\"");
+            changed = writeDimensionType(changed, datapacks);
+        }
+
+        if (write) {
             File mcm = new File(datapacks, "iris/pack.mcmeta");
             try {
                 IO.writeAll(mcm, """
-                    {
-                        "pack": {
-                            "description": "Iris Data Pack. This pack contains all installed Iris Packs' resources.",
-                            "pack_format": 7
+                        {
+                            "pack": {
+                                "description": "Iris Data Pack. This pack contains all installed Iris Packs' resources.",
+                                "pack_format": 10
+                            }
                         }
-                    }
-                    """);
-            } catch(IOException e) {
+                        """);
+            } catch (IOException e) {
                 Iris.reportError(e);
                 e.printStackTrace();
             }
@@ -433,5 +454,27 @@ public class IrisDimension extends IrisRegistrant {
     @Override
     public void scanForErrors(JSONObject p, VolmitSender sender) {
 
+    }
+
+    public boolean writeDimensionType(boolean changed, File datapacks) {
+        File dimType = new File(datapacks, "iris/data/minecraft/dimension_type/overworld.json");
+        if (!dimType.exists())
+            changed = true;
+        dimType.getParentFile().mkdirs();
+        try {
+            IO.writeAll(dimType, generateDatapackJson());
+        } catch (IOException e) {
+            Iris.reportError(e);
+            e.printStackTrace();
+        }
+        return changed;
+    }
+
+    private String generateDatapackJson() {
+        JSONObject obj = new JSONObject(DP_OVERWORLD_DEFAULT);
+        obj.put("min_y", dimensionHeight.getMin());
+        obj.put("height", dimensionHeight.getMax() - dimensionHeight.getMin());
+        obj.put("logical_height", logicalHeight);
+        return obj.toString(4);
     }
 }

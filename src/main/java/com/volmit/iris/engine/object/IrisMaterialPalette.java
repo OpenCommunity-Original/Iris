@@ -20,11 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.noise.CNG;
@@ -33,6 +29,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.bukkit.block.data.BlockData;
+
+import java.util.Optional;
 
 @Snippet("palette")
 @Accessors(chain = true)
@@ -55,15 +53,23 @@ public class IrisMaterialPalette {
     private KList<IrisBlockData> palette = new KList<IrisBlockData>().qadd(new IrisBlockData("STONE"));
 
     public BlockData get(RNG rng, double x, double y, double z, IrisData rdata) {
-        if(getBlockData(rdata).isEmpty()) {
+        if (getBlockData(rdata).isEmpty()) {
             return null;
         }
 
-        if(getBlockData(rdata).size() == 1) {
+        if (getBlockData(rdata).size() == 1) {
             return getBlockData(rdata).get(0);
         }
 
         return getLayerGenerator(rng, rdata).fit(getBlockData(rdata), x / zoom, y / zoom, z / zoom);
+    }
+
+    public Optional<TileData<?>> getTile(RNG rng, double x, double y, double z, IrisData rdata) {
+        if (getBlockData(rdata).isEmpty())
+            return Optional.empty();
+
+        TileData<?> tile = getBlockData(rdata).size() == 1 ? palette.get(0).tryGetTile() : palette.getRandom(rng).tryGetTile();
+        return tile != null ? Optional.of(tile) : Optional.empty();
     }
 
     public CNG getLayerGenerator(RNG rng, IrisData rdata) {
@@ -95,10 +101,10 @@ public class IrisMaterialPalette {
         return blockData.aquire(() ->
         {
             KList<BlockData> blockData = new KList<>();
-            for(IrisBlockData ix : palette) {
+            for (IrisBlockData ix : palette) {
                 BlockData bx = ix.getBlockData(rdata);
-                if(bx != null) {
-                    for(int i = 0; i < ix.getWeight(); i++) {
+                if (bx != null) {
+                    for (int i = 0; i < ix.getWeight(); i++) {
                         blockData.add(bx);
                     }
                 }

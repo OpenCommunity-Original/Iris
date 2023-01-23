@@ -63,21 +63,21 @@ public class IrisLootTable extends IrisRegistrant {
     @ArrayType(min = 1, type = IrisLoot.class)
     private KList<IrisLoot> loot = new KList<>();
 
-    public KList<ItemStack> getLoot(boolean debug, boolean doSomething, RNG rng, InventorySlotType slot, int x, int y, int z, int gg, int ffs) {
+    public KList<ItemStack> getLoot(boolean debug, RNG rng, InventorySlotType slot, int x, int y, int z) {
         KList<ItemStack> lootf = new KList<>();
 
         int m = 0;
         int mx = rng.i(getMinPicked(), getMaxPicked());
 
-        while(m < mx) {
+        while (m < mx) {
             int num = rng.i(loot.size());
 
             IrisLoot l = loot.get(num);
 
-            if(l.getSlotTypes() == slot) {
+            if (l.getSlotTypes() == slot) {
                 ItemStack item = l.get(debug, false, this, rng, x, y, z);
 
-                if(item != null && item.getType() != Material.AIR) {
+                if (item != null && item.getType() != Material.AIR) {
                     lootf.add(item);
                     m++;
                 }

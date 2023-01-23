@@ -38,10 +38,12 @@ import com.volmit.iris.util.parallel.MultiBurst;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.jobs.QueueJob;
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.World;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -58,35 +60,33 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(description = "Create a new world", aliases = {"+", "c"})
     public void create(
-        @Param(aliases = "world-name", description = "The name of the world to create")
+            @Param(aliases = "world-name", description = "The name of the world to create")
             String name,
-        @Param(aliases = "dimension", description = "The dimension type to create the world with", defaultValue = "default")
+            @Param(aliases = "dimension", description = "The dimension type to create the world with", defaultValue = "default")
             IrisDimension type,
-        @Param(description = "The seed to generate the world with", defaultValue = "1337")
+            @Param(description = "The seed to generate the world with", defaultValue = "1337")
             long seed
     ) {
-        if(name.equals("iris")) {
+        if (name.equals("iris")) {
             sender().sendMessage(C.RED + "You cannot use the world name \"iris\" for creating worlds as Iris uses this directory for studio worlds.");
             sender().sendMessage(C.RED + "May we suggest the name \"IrisWorld\" instead?");
             return;
         }
 
-        if(new File(name).exists()) {
+        if (new File(Bukkit.getWorldContainer(), name).exists()) {
             sender().sendMessage(C.RED + "That folder already exists!");
             return;
         }
 
-        sender().sendMessage(C.RED + "You should not be using this command to create new worlds. Instead, use /mvc " + name + " NORMAL -g Iris:" + type.getName());
-
         try {
             IrisToolbelt.createWorld()
-                .dimension(type.getLoadKey())
-                .name(name)
-                .seed(seed)
-                .sender(sender())
-                .studio(false)
-                .create();
-        } catch(Throwable e) {
+                    .dimension(type.getLoadKey())
+                    .name(name)
+                    .seed(seed)
+                    .sender(sender())
+                    .studio(false)
+                    .create();
+        } catch (Throwable e) {
             sender().sendMessage(C.RED + "Exception raised during creation. See the console for more details.");
             Iris.error("Exception raised during world creation: " + e.getMessage());
             Iris.reportError(e);
@@ -96,24 +96,61 @@ public class CommandIris implements DecreeExecutor {
         sender().sendMessage(C.GREEN + "Successfully created your world!");
     }
 
+    @Decree(description = "Remove an Iris world", aliases = {"del", "rm"}, sync = true)
+    public void remove(
+            @Param(description = "The world to remove")
+            World world,
+            @Param(description = "Whether to also remove the folder (if set to false, just does not load the world)", defaultValue = "true")
+            boolean delete
+    ) {
+        if (!IrisToolbelt.isIrisWorld(world)) {
+            sender().sendMessage(C.RED + "This is not an Iris world. Iris worlds: " + String.join(", ", Bukkit.getServer().getWorlds().stream().filter(IrisToolbelt::isIrisWorld).map(World::getName).toList()));
+            return;
+        }
+        sender().sendMessage(C.GREEN + "Removing world: " + world.getName());
+        try {
+            if (IrisToolbelt.removeWorld(world)) {
+                sender().sendMessage(C.GREEN + "Successfully removed " + world.getName() + " from bukkit.yml");
+            } else {
+                sender().sendMessage(C.YELLOW + "Looks like the world was already removed from bukkit.yml");
+            }
+        } catch (IOException e) {
+            sender().sendMessage(C.RED + "Failed to save bukkit.yml because of " + e.getMessage());
+            e.printStackTrace();
+        }
+        IrisToolbelt.evacuate(world, "Deleting world");
+        Bukkit.unloadWorld(world, false);
+        if (delete && world.getWorldFolder().delete()) {
+            sender().sendMessage(C.GREEN + "Successfully removed world folder");
+        } else {
+            sender().sendMessage(C.RED + "Failed to remove world folder");
+        }
+    }
+
     @Decree(description = "Print version information")
     public void version() {
         sender().sendMessage(C.GREEN + "Iris v" + Iris.instance.getDescription().getVersion() + " by Volmit Software");
     }
 
-    @Decree(description = "Print version information", origin = DecreeOrigin.PLAYER)
+    @Decree(description = "Print world height information", origin = DecreeOrigin.PLAYER)
     public void height() {
         sender().sendMessage(C.GREEN + "" + sender().player().getWorld().getMinHeight() + " to " + sender().player().getWorld().getMaxHeight());
         sender().sendMessage(C.GREEN + "Total Height: " + (sender().player().getWorld().getMaxHeight() - sender().player().getWorld().getMinHeight()));
     }
 
+    @Decree(description = "QOL command to open a overworld studio world.", sync = true)
+    public void so() {
+        sender().sendMessage(C.GREEN + "Opening studio for the \"Overworld\" pack (seed: 1337)");
+        Iris.service(StudioSVC.class).open(sender(), 1337, "overworld");
+    }
+
     @Decree(description = "Set aura spins")
     public void aura(
-        @Param(description = "The h color value", defaultValue = "-20")
+            @Param(description = "The h color value", defaultValue = "-20")
             int h,
-        @Param(description = "The s color value", defaultValue = "7")
+            @Param(description = "The s color value", defaultValue = "7")
             int s,
-        @Param(description = "The b color value", defaultValue = "8")
+            @Param(description = "The b color value", defaultValue = "8")
             int b
     ) {
         IrisSettings.get().getGeneral().setSpinh(h);
@@ -125,15 +162,15 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(description = "Bitwise calculations")
     public void bitwise(
-        @Param(description = "The first value to run calculations on")
+            @Param(description = "The first value to run calculations on")
             int value1,
-        @Param(description = "The operator: | & ^ ≺≺ ≻≻ ％")
+            @Param(description = "The operator: | & ^ ≺≺ ≻≻ ％")
             String operator,
-        @Param(description = "The second value to run calculations on")
+            @Param(description = "The second value to run calculations on")
             int value2
     ) {
         Integer v = null;
-        switch(operator) {
+        switch (operator) {
             case "|" -> v = value1 | value2;
             case "&" -> v = value1 & value2;
             case "^" -> v = value1 ^ value2;
@@ -141,7 +178,7 @@ public class CommandIris implements DecreeExecutor {
             case ">>" -> v = value1 >> value2;
             case "<<" -> v = value1 << value2;
         }
-        if(v == null) {
+        if (v == null) {
             sender().sendMessage(C.RED + "The operator you entered: (" + operator + ") is invalid!");
             return;
         }
@@ -150,7 +187,7 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(description = "Toggle debug")
     public void debug(
-        @Param(name = "on", description = "Whether or not debug should be on", defaultValue = "other")
+            @Param(name = "on", description = "Whether or not debug should be on", defaultValue = "other")
             Boolean on
     ) {
         boolean to = on == null ? !IrisSettings.get().getGeneral().isDebug() : on;
@@ -161,23 +198,27 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(description = "Download a project.", aliases = "dl")
     public void download(
-        @Param(name = "pack", description = "The pack to download", defaultValue = "overworld", aliases = "project")
+            @Param(name = "pack", description = "The pack to download", defaultValue = "overworld", aliases = "project")
             String pack,
-        @Param(name = "branch", description = "The branch to download from", defaultValue = "master")
+            @Param(name = "branch", description = "The branch to download from", defaultValue = "main")
             String branch,
-        @Param(name = "trim", description = "Whether or not to download a trimmed version (do not enable when editing)", defaultValue = "false")
+            @Param(name = "trim", description = "Whether or not to download a trimmed version (do not enable when editing)", defaultValue = "false")
             boolean trim,
-        @Param(name = "overwrite", description = "Whether or not to overwrite the pack with the downloaded one", aliases = "force", defaultValue = "false")
+            @Param(name = "overwrite", description = "Whether or not to overwrite the pack with the downloaded one", aliases = "force", defaultValue = "false")
             boolean overwrite
     ) {
-        branch = pack.equals("overworld") ? "stable" : branch;
         sender().sendMessage(C.GREEN + "Downloading pack: " + pack + "/" + branch + (trim ? " trimmed" : "") + (overwrite ? " overwriting" : ""));
-        Iris.service(StudioSVC.class).downloadSearch(sender(), "IrisDimensions/" + pack + "/" + branch, trim, overwrite);
+        if (pack.equals("overworld")) {
+            String url = "https://github.com/IrisDimensions/overworld/releases/download/" + Iris.OVERWORLD_TAG + "/overworld.zip";
+            Iris.service(StudioSVC.class).downloadRelease(sender(), url, trim, overwrite);
+        } else {
+            Iris.service(StudioSVC.class).downloadSearch(sender(), "IrisDimensions/" + pack + "/" + branch, trim, overwrite);
+        }
     }
 
     @Decree(description = "Get metrics for your world", aliases = "measure", origin = DecreeOrigin.PLAYER)
     public void metrics() {
-        if(!IrisToolbelt.isIrisWorld(world())) {
+        if (!IrisToolbelt.isIrisWorld(world())) {
             sender().sendMessage(C.RED + "You must be in an Iris world");
             return;
         }
@@ -194,10 +235,10 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(name = "regen", description = "Regenerate nearby chunks.", aliases = "rg", sync = true, origin = DecreeOrigin.PLAYER)
     public void regen(
-        @Param(name = "radius", description = "The radius of nearby cunks", defaultValue = "5")
+            @Param(name = "radius", description = "The radius of nearby cunks", defaultValue = "5")
             int radius
     ) {
-        if(IrisToolbelt.isIrisWorld(player().getWorld())) {
+        if (IrisToolbelt.isIrisWorld(player().getWorld())) {
             VolmitSender sender = sender();
             J.a(() -> {
                 DecreeContext.touch(sender);
@@ -209,18 +250,18 @@ public class CommandIris implements DecreeExecutor {
                     BurstExecutor b = MultiBurst.burst.burst();
                     b.setMulticore(false);
                     int rad = engine.getMantle().getRealRadius();
-                    for(int i = -(radius + rad); i <= radius + rad; i++) {
-                        for(int j = -(radius + rad); j <= radius + rad; j++) {
+                    for (int i = -(radius + rad); i <= radius + rad; i++) {
+                        for (int j = -(radius + rad); j <= radius + rad; j++) {
                             engine.getMantle().getMantle().deleteChunk(i + cx.getX(), j + cx.getZ());
                         }
                     }
 
-                    for(int i = -radius; i <= radius; i++) {
-                        for(int j = -radius; j <= radius; j++) {
+                    for (int i = -radius; i <= radius; i++) {
+                        for (int j = -radius; j <= radius; j++) {
                             int finalJ = j;
                             int finalI = i;
                             b.queue(() -> plat.injectChunkReplacement(player().getWorld(), finalI + cx.getX(), finalJ + cx.getZ(), (f) -> {
-                                synchronized(js) {
+                                synchronized (js) {
                                     js.add(f);
                                 }
                             }));
@@ -236,11 +277,11 @@ public class CommandIris implements DecreeExecutor {
                         public void execute(Runnable runnable) {
                             futures.add(J.sfut(runnable));
 
-                            if(futures.size() > 64) {
-                                while(futures.isNotEmpty()) {
+                            if (futures.size() > 64) {
+                                while (futures.isNotEmpty()) {
                                     try {
                                         futures.remove(0).get();
-                                    } catch(InterruptedException | ExecutionException e) {
+                                    } catch (InterruptedException | ExecutionException e) {
                                         e.printStackTrace();
                                     }
                                 }
@@ -254,7 +295,7 @@ public class CommandIris implements DecreeExecutor {
                     };
                     r.queue(js);
                     r.execute(sender());
-                } catch(Throwable e) {
+                } catch (Throwable e) {
                     sender().sendMessage("Unable to parse view-distance");
                 }
             });
@@ -265,26 +306,26 @@ public class CommandIris implements DecreeExecutor {
 
     @Decree(description = "Update the pack of a world (UNSAFE!)", name = "^world", aliases = "update-world")
     public void updateWorld(
-        @Param(description = "The world to update", contextual = true)
+            @Param(description = "The world to update", contextual = true)
             World world,
-        @Param(description = "The pack to install into the world", contextual = true, aliases = "dimension")
+            @Param(description = "The pack to install into the world", contextual = true, aliases = "dimension")
             IrisDimension pack,
-        @Param(description = "Make sure to make a backup & read the warnings first!", defaultValue = "false", aliases = "c")
+            @Param(description = "Make sure to make a backup & read the warnings first!", defaultValue = "false", aliases = "c")
             boolean confirm,
-        @Param(description = "Should Iris download the pack again for you", defaultValue = "false", name = "fresh-download", aliases = {"fresh", "new"})
+            @Param(description = "Should Iris download the pack again for you", defaultValue = "false", name = "fresh-download", aliases = {"fresh", "new"})
             boolean freshDownload
     ) {
-        if(!confirm) {
-            sender().sendMessage(new String[] {
-                C.RED + "You should always make a backup before using this",
-                C.YELLOW + "Issues caused by this can be, but are not limited to:",
-                C.YELLOW + " - Broken chunks (cut-offs) between old and new chunks (before & after the update)",
-                C.YELLOW + " - Regenerated chunks that do not fit in with the old chunks",
-                C.YELLOW + " - Structures not spawning again when regenerating",
-                C.YELLOW + " - Caves not lining up",
-                C.YELLOW + " - Terrain layers not lining up",
-                C.RED + "Now that you are aware of the risks, and have made a back-up:",
-                C.RED + "/iris ^world <world> <pack> confirm=true"
+        if (!confirm) {
+            sender().sendMessage(new String[]{
+                    C.RED + "You should always make a backup before using this",
+                    C.YELLOW + "Issues caused by this can be, but are not limited to:",
+                    C.YELLOW + " - Broken chunks (cut-offs) between old and new chunks (before & after the update)",
+                    C.YELLOW + " - Regenerated chunks that do not fit in with the old chunks",
+                    C.YELLOW + " - Structures not spawning again when regenerating",
+                    C.YELLOW + " - Caves not lining up",
+                    C.YELLOW + " - Terrain layers not lining up",
+                    C.RED + "Now that you are aware of the risks, and have made a back-up:",
+                    C.RED + "/iris ^world <world> <pack> confirm=true"
             });
             return;
         }
@@ -292,7 +333,7 @@ public class CommandIris implements DecreeExecutor {
         File folder = world.getWorldFolder();
         folder.mkdirs();
 
-        if(freshDownload) {
+        if (freshDownload) {
             Iris.service(StudioSVC.class).downloadSearch(sender(), pack.getLoadKey(), false, true);
         }
 

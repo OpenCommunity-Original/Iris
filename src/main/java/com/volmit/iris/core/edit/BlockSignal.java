@@ -36,12 +36,11 @@ public class BlockSignal {
 
     public BlockSignal(Block block, int ticks) {
         active.incrementAndGet();
-        Location tg = block.getLocation().clone().add(0.5, 0, 0.5).clone();
-        FallingBlock e = block.getWorld().spawnFallingBlock(tg.clone(), block.getBlockData());
+        Location tg = block.getLocation().clone().add(0.5, 0, 0.5);
+        FallingBlock e = block.getWorld().spawnFallingBlock(tg, block.getBlockData());
         e.setGravity(false);
         e.setInvulnerable(true);
         e.setGlowing(true);
-        e.teleport(tg.clone());
         e.setDropItem(false);
         e.setHurtEntities(false);
         e.setSilent(true);
@@ -52,7 +51,7 @@ public class BlockSignal {
             active.decrementAndGet();
             BlockData type = block.getBlockData();
             MultiBurst.burst.lazy(() -> {
-                for(Player i : block.getWorld().getPlayers()) {
+                for (Player i : block.getWorld().getPlayers()) {
                     i.sendBlockChange(block.getLocation(), block.getBlockData());
                 }
             });
@@ -83,7 +82,7 @@ public class BlockSignal {
         new SR(20) {
             @Override
             public void run() {
-                if(e.isDead()) {
+                if (e.isDead()) {
                     cancel();
                     return;
                 }
@@ -99,7 +98,7 @@ public class BlockSignal {
             BlockData type = block.getBlockData();
 
             MultiBurst.burst.lazy(() -> {
-                for(Player i : block.getWorld().getPlayers()) {
+                for (Player i : block.getWorld().getPlayers()) {
                     i.sendBlockChange(block.getLocation(), block.getBlockData());
                 }
             });

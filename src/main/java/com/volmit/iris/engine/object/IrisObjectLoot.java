@@ -20,11 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.RegistryListResource;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -57,10 +53,10 @@ public class IrisObjectLoot {
         {
             KList<BlockData> b = new KList<>();
 
-            for(IrisBlockData i : filter) {
+            for (IrisBlockData i : filter) {
                 BlockData bx = i.getBlockData(rdata);
 
-                if(bx != null) {
+                if (bx != null) {
                     b.add(bx);
                 }
             }
@@ -70,8 +66,8 @@ public class IrisObjectLoot {
     }
 
     public boolean matchesFilter(IrisData manager, BlockData data) {
-        for(BlockData filterData : getFilter(manager)) {
-            if(filterData.matches(data)) return true;
+        for (BlockData filterData : getFilter(manager)) {
+            if (filterData.matches(data)) return true;
         }
         return false;
     }

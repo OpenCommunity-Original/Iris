@@ -29,7 +29,7 @@ import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.plugin.VolmitSender;
 import lombok.Data;
 
-import java.awt.Desktop;
+import java.awt.*;
 import java.io.File;
 
 @Data
@@ -56,7 +56,7 @@ public abstract class IrisRegistrant {
     public File openInVSCode() {
         try {
             Desktop.getDesktop().open(getLoadFile());
-        } catch(Throwable e) {
+        } catch (Throwable e) {
             Iris.reportError(e);
         }
 

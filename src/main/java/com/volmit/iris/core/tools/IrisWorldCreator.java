@@ -22,6 +22,7 @@ import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.object.IrisDimension;
 import com.volmit.iris.engine.object.IrisWorld;
 import com.volmit.iris.engine.platform.BukkitChunkGenerator;
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.generator.ChunkGenerator;
@@ -67,26 +68,26 @@ public class IrisWorldCreator {
         IrisDimension dim = IrisData.loadAnyDimension(dimensionName);
 
         IrisWorld w = IrisWorld.builder()
-            .name(name)
-            .minHeight(dim.getMinHeight())
-            .maxHeight(dim.getMaxHeight())
-            .seed(seed)
-            .worldFolder(new File(name))
-            .environment(findEnvironment())
-            .build();
+                .name(name)
+                .minHeight(dim.getMinHeight())
+                .maxHeight(dim.getMaxHeight())
+                .seed(seed)
+                .worldFolder(new File(Bukkit.getWorldContainer(), name))
+                .environment(findEnvironment())
+                .build();
         ChunkGenerator g = new BukkitChunkGenerator(w, studio, studio
-            ? dim.getLoader().getDataFolder() :
-            new File(w.worldFolder(), "iris/pack"), dimensionName);
+                ? dim.getLoader().getDataFolder() :
+                new File(w.worldFolder(), "iris/pack"), dimensionName);
 
         return new WorldCreator(name)
-            .environment(findEnvironment())
-            .generateStructures(true)
-            .generator(g).seed(seed);
+                .environment(findEnvironment())
+                .generateStructures(true)
+                .generator(g).seed(seed);
     }
 
     private World.Environment findEnvironment() {
         IrisDimension dim = IrisData.loadAnyDimension(dimensionName);
-        if(dim == null || dim.getEnvironment() == null) {
+        if (dim == null || dim.getEnvironment() == null) {
             return World.Environment.NORMAL;
         } else {
             return dim.getEnvironment();

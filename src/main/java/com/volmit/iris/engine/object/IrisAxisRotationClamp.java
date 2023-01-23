@@ -18,12 +18,7 @@
 
 package com.volmit.iris.engine.object;
 
-import com.volmit.iris.engine.object.annotations.DependsOn;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.math.M;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -78,19 +73,19 @@ public class IrisAxisRotationClamp {
     }
 
     public double getRadians(int rng) {
-        if(forceLock) {
+        if (forceLock) {
             return Math.toRadians(Math.ceil(Math.abs((max % 360D))));
         }
 
-        if(isUnlimited()) {
-            if(interval < 1) {
+        if (isUnlimited()) {
+            if (interval < 1) {
                 interval = 1;
             }
 
             return Math.toRadians((interval * (Math.ceil(Math.abs((rng % 360D) / interval)))) % 360D);
         }
 
-        if(min == max && min != 0) {
+        if (min == max && min != 0) {
             return Math.toRadians(max);
         }
 

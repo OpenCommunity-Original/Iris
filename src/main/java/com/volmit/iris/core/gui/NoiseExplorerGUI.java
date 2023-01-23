@@ -35,24 +35,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
 import javax.imageio.ImageIO;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
-import javax.swing.JFrame;
-import javax.swing.JLayeredPane;
-import javax.swing.JPanel;
-import javax.swing.JViewport;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.EventQueue;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionListener;
-import java.awt.event.MouseWheelEvent;
-import java.awt.event.MouseWheelListener;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -133,10 +118,10 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         frame.add(pane);
         File file = Iris.getCached("Iris Icon", "https://raw.githubusercontent.com/VolmitSoftware/Iris/master/icon.png");
 
-        if(file != null) {
+        if (file != null) {
             try {
                 frame.setIconImage(ImageIO.read(file));
-            } catch(IOException e) {
+            } catch (IOException e) {
                 Iris.reportError(e);
             }
         }
@@ -148,7 +133,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         JFrame frame = new JFrame("Noise Explorer");
         NoiseExplorerGUI nv = new NoiseExplorerGUI();
         frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-        KList<String> li = new KList<>(NoiseStyle.values()).toStringList();
+        KList<String> li = new KList<>(NoiseStyle.values()).toStringList().sort();
         combo = new JComboBox<>(li.toArray(new String[0]));
         combo.setSelectedItem("STATIC");
         combo.setFocusable(false);
@@ -167,10 +152,10 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         frame.add(pane);
         File file = Iris.getCached("Iris Icon", "https://raw.githubusercontent.com/VolmitSoftware/Iris/master/icon.png");
 
-        if(file != null) {
+        if (file != null) {
             try {
                 frame.setIconImage(ImageIO.read(file));
-            } catch(IOException e) {
+            } catch (IOException e) {
                 Iris.reportError(e);
             }
         }
@@ -194,14 +179,14 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
 
     @EventHandler
     public void on(IrisEngineHotloadEvent e) {
-        if(generator != null)
+        if (generator != null)
             generator = loader.get();
     }
 
     public void mouseWheelMoved(MouseWheelEvent e) {
 
         int notches = e.getWheelRotation();
-        if(e.isControlDown()) {
+        if (e.isControlDown()) {
             t = t + ((0.0025 * t) * notches);
             return;
         }
@@ -212,51 +197,51 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
 
     @Override
     public void paint(Graphics g) {
-        if(scale < ascale) {
+        if (scale < ascale) {
             ascale -= Math.abs(scale - ascale) * 0.16;
         }
 
-        if(scale > ascale) {
+        if (scale > ascale) {
             ascale += Math.abs(ascale - scale) * 0.16;
         }
 
-        if(t < tz) {
+        if (t < tz) {
             tz -= Math.abs(t - tz) * 0.29;
         }
 
-        if(t > tz) {
+        if (t > tz) {
             tz += Math.abs(tz - t) * 0.29;
         }
 
-        if(ox < oxp) {
+        if (ox < oxp) {
             oxp -= Math.abs(ox - oxp) * 0.16;
         }
 
-        if(ox > oxp) {
+        if (ox > oxp) {
             oxp += Math.abs(oxp - ox) * 0.16;
         }
 
-        if(oz < ozp) {
+        if (oz < ozp) {
             ozp -= Math.abs(oz - ozp) * 0.16;
         }
 
-        if(oz > ozp) {
+        if (oz > ozp) {
             ozp += Math.abs(ozp - oz) * 0.16;
         }
 
-        if(mx < mxx) {
+        if (mx < mxx) {
             mxx -= Math.abs(mx - mxx) * 0.16;
         }
 
-        if(mx > mxx) {
+        if (mx > mxx) {
             mxx += Math.abs(mxx - mx) * 0.16;
         }
 
-        if(mz < mzz) {
+        if (mz < mzz) {
             mzz -= Math.abs(mz - mzz) * 0.16;
         }
 
-        if(mz > mzz) {
+        if (mz > mzz) {
             mzz += Math.abs(mzz - mz) * 0.16;
         }
 
@@ -265,26 +250,26 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         accuracy = down ? accuracy * 4 : accuracy;
         int v = 1000;
 
-        if(g instanceof Graphics2D gg) {
+        if (g instanceof Graphics2D gg) {
 
-            if(getParent().getWidth() != w || getParent().getHeight() != h) {
+            if (getParent().getWidth() != w || getParent().getHeight() != h) {
                 w = getParent().getWidth();
                 h = getParent().getHeight();
                 img = null;
             }
 
-            if(img == null) {
+            if (img == null) {
                 img = new BufferedImage(w / accuracy, h / accuracy, BufferedImage.TYPE_INT_RGB);
             }
 
             BurstExecutor e = gx.burst(w);
 
-            for(int x = 0; x < w / accuracy; x++) {
+            for (int x = 0; x < w / accuracy; x++) {
                 int xx = x;
 
                 int finalAccuracy = accuracy;
                 e.queue(() -> {
-                    for(int z = 0; z < h / finalAccuracy; z++) {
+                    for (int z = 0; z < h / finalAccuracy; z++) {
                         double n = generator != null ? generator.apply(((xx * finalAccuracy) * ascale) + oxp, ((z * finalAccuracy) * ascale) + ozp) : cng.noise(((xx * finalAccuracy) * ascale) + oxp, ((z * finalAccuracy) * ascale) + ozp);
                         n = n > 1 ? 1 : n < 0 ? 0 : n;
 
@@ -292,8 +277,7 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
                             Color color = colorMode ? Color.getHSBColor((float) (n), 1f - (float) (n * n * n * n * n * n), 1f - (float) n) : Color.getHSBColor(0f, 0f, (float) n);
                             int rgb = color.getRGB();
                             img.setRGB(xx, z, rgb);
-                        } catch(Throwable xxx) {
-
+                        } catch (Throwable ignored) {
                         }
                     }
                 });
@@ -308,15 +292,15 @@ public class NoiseExplorerGUI extends JPanel implements MouseWheelListener, List
         t += 1D;
         r.put(p.getMilliseconds());
 
-        if(!isVisible()) {
+        if (!isVisible()) {
             return;
         }
 
-        if(!getParent().isVisible()) {
+        if (!getParent().isVisible()) {
             return;
         }
 
-        if(!getParent().getParent().isVisible()) {
+        if (!getParent().getParent().isVisible()) {
             return;
         }
 

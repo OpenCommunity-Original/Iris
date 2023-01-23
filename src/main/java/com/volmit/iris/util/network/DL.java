@@ -22,12 +22,7 @@ import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
@@ -74,7 +69,7 @@ public abstract class DL {
     }
 
     public void update() {
-        if(m != null) {
+        if (m != null) {
             m.onUpdate(state, getProgress(), getElapsed(), getTimeLeft(), bps, getDiskBytesPerSecond(), size, downloaded, bufferSize, getBufferUse());
         }
     }
@@ -97,13 +92,13 @@ public abstract class DL {
     }
 
     public void start() throws IOException {
-        if(!isState(DownloadState.NEW)) {
+        if (!isState(DownloadState.NEW)) {
             throw new DownloadException("Cannot start download while " + state.toString());
         }
 
         state(DownloadState.STARTING);
 
-        if(hasFlag(DownloadFlag.CALCULATE_SIZE)) {
+        if (hasFlag(DownloadFlag.CALCULATE_SIZE)) {
             size = calculateSize();
         }
 
@@ -123,14 +118,14 @@ public abstract class DL {
     protected abstract void closeStream() throws IOException;
 
     public void downloadChunk() throws IOException {
-        if(!isState(DownloadState.DOWNLOADING)) {
+        if (!isState(DownloadState.DOWNLOADING)) {
             throw new DownloadException("Cannot download while " + state.toString());
         }
 
         long d = download();
         lastPull = d;
 
-        if(d < 0) {
+        if (d < 0) {
             finishDownload();
             return;
         }
@@ -141,7 +136,7 @@ public abstract class DL {
         double chunkTime = (double) (System.currentTimeMillis() - lastChunk) / 1000D;
         bps = (long) ((double) currentChunk / chunkTime);
 
-        if(latch.flip()) {
+        if (latch.flip()) {
             update();
         }
     }
@@ -151,7 +146,7 @@ public abstract class DL {
     }
 
     private void finishDownload() throws IOException {
-        if(!isState(DownloadState.NEW)) {
+        if (!isState(DownloadState.NEW)) {
             throw new DownloadException("Cannot finish download while " + state.toString());
         }
 
@@ -173,7 +168,7 @@ public abstract class DL {
     }
 
     public long getDiskBytesPerSecond() {
-        if(o == null) {
+        if (o == null) {
             return -1;
         }
 
@@ -223,10 +218,10 @@ public abstract class DL {
 
         @Override
         protected long download() throws IOException {
-            if(getBytesPerSecond() > mbps) {
+            if (getBytesPerSecond() > mbps) {
                 try {
                     Thread.sleep(40);
-                } catch(InterruptedException e) {
+                } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
 

@@ -20,12 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.Required;
-import com.volmit.iris.engine.object.annotations.Snippet;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.interpolation.IrisInterpolation;
 import com.volmit.iris.util.math.RNG;
@@ -95,7 +90,7 @@ public class IrisNoiseGenerator {
     }
 
     public double getNoise(long superSeed, double xv, double zv, IrisData data) {
-        if(!enabled) {
+        if (!enabled) {
             return offsetY;
         }
 
@@ -103,8 +98,8 @@ public class IrisNoiseGenerator {
         double z = zv;
         int g = 33;
 
-        for(IrisNoiseGenerator i : fracture) {
-            if(i.isEnabled()) {
+        for (IrisNoiseGenerator i : fracture) {
+            if (i.isEnabled()) {
                 x += i.getNoise(superSeed + seed + g, xv, zv, data) - (opacity / 2D);
                 z -= i.getNoise(superSeed + seed + g, zv, xv, data) - (opacity / 2D);
             }
@@ -126,7 +121,7 @@ public class IrisNoiseGenerator {
 
         g.add(this);
 
-        for(IrisNoiseGenerator i : getFracture()) {
+        for (IrisNoiseGenerator i : getFracture()) {
             g.addAll(i.getAllComposites());
         }
 

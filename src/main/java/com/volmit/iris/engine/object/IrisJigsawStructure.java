@@ -21,12 +21,7 @@ package com.volmit.iris.engine.object;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.engine.data.cache.AtomicCache;
-import com.volmit.iris.engine.object.annotations.ArrayType;
-import com.volmit.iris.engine.object.annotations.Desc;
-import com.volmit.iris.engine.object.annotations.MaxNumber;
-import com.volmit.iris.engine.object.annotations.MinNumber;
-import com.volmit.iris.engine.object.annotations.RegistryListResource;
-import com.volmit.iris.engine.object.annotations.Required;
+import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.plugin.VolmitSender;
@@ -70,19 +65,19 @@ public class IrisJigsawStructure extends IrisRegistrant {
     private transient AtomicCache<Integer> maxDimension = new AtomicCache<>();
 
     private void loadPool(String p, KList<String> pools, KList<String> pieces) {
-        if(p.isEmpty()) {
+        if (p.isEmpty()) {
             return;
         }
 
         IrisJigsawPool pool = getLoader().getJigsawPoolLoader().load(p);
 
-        if(pool == null) {
+        if (pool == null) {
             Iris.warn("Can't find jigsaw pool: " + p);
             return;
         }
 
-        for(String i : pool.getPieces()) {
-            if(pieces.addIfMissing(i)) {
+        for (String i : pool.getPieces()) {
+            if (pieces.addIfMissing(i)) {
                 loadPiece(i, pools, pieces);
             }
         }
@@ -91,14 +86,14 @@ public class IrisJigsawStructure extends IrisRegistrant {
     private void loadPiece(String p, KList<String> pools, KList<String> pieces) {
         IrisJigsawPiece piece = getLoader().getJigsawPieceLoader().load(p);
 
-        if(piece == null) {
+        if (piece == null) {
             Iris.warn("Can't find jigsaw piece: " + p);
             return;
         }
 
-        for(IrisJigsawPieceConnector i : piece.getConnectors()) {
-            for(String j : i.getPools()) {
-                if(pools.addIfMissing(j)) {
+        for (IrisJigsawPieceConnector i : piece.getConnectors()) {
+            for (String j : i.getPools()) {
+                if (pools.addIfMissing(j)) {
                     loadPool(j, pools, pieces);
                 }
             }
@@ -107,16 +102,16 @@ public class IrisJigsawStructure extends IrisRegistrant {
 
     public int getMaxDimension() {
         return maxDimension.aquire(() -> {
-            if(useMaxPieceSizeForParallaxRadius) {
+            if (useMaxPieceSizeForParallaxRadius) {
                 int max = 0;
                 KList<String> pools = new KList<>();
                 KList<String> pieces = new KList<>();
 
-                for(String i : getPieces()) {
+                for (String i : getPieces()) {
                     loadPiece(i, pools, pieces);
                 }
 
-                for(String i : pieces) {
+                for (String i : pieces) {
                     max = Math.max(max, getLoader().getJigsawPieceLoader().load(i).getMax3dDimension());
                 }
 
@@ -125,13 +120,13 @@ public class IrisJigsawStructure extends IrisRegistrant {
                 KList<String> pools = new KList<>();
                 KList<String> pieces = new KList<>();
 
-                for(String i : getPieces()) {
+                for (String i : getPieces()) {
                     loadPiece(i, pools, pieces);
                 }
 
                 int avg = 0;
 
-                for(String i : pieces) {
+                for (String i : pieces) {
                     avg += getLoader().getJigsawPieceLoader().load(i).getMax2dDimension();
                 }
 

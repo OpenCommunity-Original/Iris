@@ -18,13 +18,7 @@
 
 package com.volmit.iris.engine.data.io;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.StringWriter;
-import java.io.Writer;
+import java.io.*;
 
 public interface StringSerializer<T> extends Serializer<T> {
 
@@ -46,7 +40,7 @@ public interface StringSerializer<T> extends Serializer<T> {
 
     @Override
     default void toFile(T object, File file) throws IOException {
-        try(Writer writer = new FileWriter(file)) {
+        try (Writer writer = new FileWriter(file)) {
             toWriter(object, writer);
         }
     }
