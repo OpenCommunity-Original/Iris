@@ -28,7 +28,7 @@ import com.volmit.iris.core.link.MultiverseCoreLink;
 import com.volmit.iris.core.link.MythicMobsLink;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.nms.INMS;
-import com.volmit.iris.core.nms.v19_3.NMSBinding19_3;
+import com.volmit.iris.core.nms.v19_4.NMSBinding19_4;
 import com.volmit.iris.core.pregenerator.LazyPregenerator;
 import com.volmit.iris.core.service.StudioSVC;
 import com.volmit.iris.core.tools.IrisToolbelt;
@@ -66,6 +66,7 @@ import org.bukkit.*;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -87,7 +88,7 @@ import java.util.Map;
 
 @SuppressWarnings("CanBeFinal")
 public class Iris extends VolmitPlugin implements Listener {
-    public static final String OVERWORLD_TAG = "2092";
+    public static final String OVERWORLD_TAG = "2100";
 
     private static final Queue<Runnable> syncJobs = new ShurikenQueue<>();
 
@@ -301,8 +302,8 @@ public class Iris extends VolmitPlugin implements Listener {
         msg(C.IRIS + string);
     }
 
-    public static void info(String string) {
-        msg(C.WHITE + string);
+    public static void info(String format, Object... args) {
+        msg(C.WHITE + String.format(format, args));
     }
 
     @SuppressWarnings("deprecation")
@@ -462,33 +463,38 @@ public class Iris extends VolmitPlugin implements Listener {
         FileConfiguration fc = new YamlConfiguration();
         try {
             fc.load(new File("bukkit.yml"));
-            searching:
-            for (String i : fc.getKeys(true)) {
-                if (i.startsWith("worlds.") && i.endsWith(".generator")) {
-                    String worldName = i.split("\\Q.\\E")[1];
-                    String generator = IrisSettings.get().getGenerator().getDefaultWorldType();
-                    if (fc.getString(i).startsWith("Iris:")) {
-                        generator = fc.getString(i).split("\\Q:\\E")[1];
-                    } else if (fc.getString(i).equals("Iris")) {
-                        generator = IrisSettings.get().getGenerator().getDefaultWorldType();
-                    } else {
-                        continue;
-                    }
+            ConfigurationSection section = fc.getConfigurationSection("worlds");
+            if(section == null) {
+                return;
+            }
 
-                    for (World j : Bukkit.getWorlds()) {
-                        if (j.getName().equals(worldName)) {
-                            continue searching;
-                        }
-                    }
-
-                    Iris.warn("Detected an Iris World in the bukkit yml '" + worldName + "' using Iris that was not loaded by bukkit. Good Guy Iris will load it up for you!");
-                    Iris.info(C.LIGHT_PURPLE + "Preparing Spawn for " + worldName + "' using Iris:" + generator);
-                    World world = new WorldCreator(worldName)
-                            .generator(getDefaultWorldGenerator(worldName, generator))
-                            .environment(IrisData.loadAnyDimension(generator).getEnvironment())
-                            .createWorld();
-                    Iris.info(C.LIGHT_PURPLE + "Loaded " + worldName + "!");
+            for(String s : section.getKeys(false)){
+                ConfigurationSection entry = section.getConfigurationSection(s);
+                if(!entry.contains("generator", true)) {
+                    continue;
                 }
+
+                String generator = entry.getString("generator");
+                if(generator.startsWith("Iris:")) {
+                    generator = generator.split("\\Q:\\E")[1];
+                } else if(generator.equalsIgnoreCase("Iris")) {
+                    generator = IrisSettings.get().getGenerator().getDefaultWorldType();
+                } else {
+                    continue;
+                }
+
+                Iris.info("2 World: %s | Generator: %s", s, generator);
+
+                if(Bukkit.getWorlds().stream().anyMatch(w -> w.getName().equals(s))) {
+                    continue;
+                }
+
+                Iris.info(C.LIGHT_PURPLE + "Preparing Spawn for " + s + "' using Iris:" + generator + "...");
+                new WorldCreator(s)
+                        .generator(getDefaultWorldGenerator(s, generator))
+                        .environment(IrisData.loadAnyDimension(generator).getEnvironment())
+                        .createWorld();
+                Iris.info(C.LIGHT_PURPLE + "Loaded " + s + "!");
             }
         } catch (Throwable e) {
             e.printStackTrace();
@@ -570,13 +576,13 @@ public class Iris extends VolmitPlugin implements Listener {
     private boolean setupChecks() {
         boolean passed = true;
         Iris.info("Version Information: " + instance.getServer().getVersion() + " | " + instance.getServer().getBukkitVersion());
-        if (!instance.getServer().getBukkitVersion().contains(NMSBinding19_3.NMS_VERSION)) {
+        if (!instance.getServer().getBukkitVersion().contains(NMSBinding19_4.NMS_VERSION)) {
             passed = false;
             Iris.warn("============================================");
             Iris.warn("=");
             Iris.warn("=");
             Iris.warn("=");
-            Iris.warn("Iris is not compatible with this version of Minecraft.\nPlease use " + NMSBinding19_3.NMS_VERSION + " or use an older version of Iris.");
+            Iris.warn("Iris is not compatible with this version of Minecraft.\nPlease use " + NMSBinding19_4.NMS_VERSION + " or use an older version of Iris.");
             Iris.warn("=");
             Iris.warn("=");
             Iris.warn("=");

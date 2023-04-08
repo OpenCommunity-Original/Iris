@@ -16,21 +16,24 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.volmit.iris.engine.object;
+package com.volmit.iris.util.decree.context;
 
-import com.volmit.iris.engine.object.annotations.Desc;
+import com.volmit.iris.core.tools.IrisToolbelt;
+import com.volmit.iris.engine.object.IrisBiome;
+import com.volmit.iris.util.decree.DecreeContextHandler;
+import com.volmit.iris.util.plugin.VolmitSender;
+import org.bukkit.util.Vector;
 
-@Desc("Represents a biome type")
-public enum InferredType {
-    @Desc("Represents any shore biome type")
-    SHORE,
+public class VectorContextHandler implements DecreeContextHandler<Vector> {
+    public Class<Vector> getType() {
+        return Vector.class;
+    }
 
-    @Desc("Represents any land biome type")
-    LAND,
+    public Vector handle(VolmitSender sender) {
+        if (sender.isPlayer()) {
+            return sender.player().getLocation().toVector();
+        }
 
-    @Desc("Represents any sea biome type")
-    SEA,
-
-    @Desc("Represents any cave biome type")
-    CAVE
+        return null;
+    }
 }

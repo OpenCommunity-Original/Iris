@@ -19,9 +19,7 @@
 package com.volmit.iris.core.service;
 
 import com.volmit.iris.Iris;
-import com.volmit.iris.core.link.ExternalDataProvider;
-import com.volmit.iris.core.link.ItemAdderDataProvider;
-import com.volmit.iris.core.link.OraxenDataProvider;
+import com.volmit.iris.core.link.*;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.plugin.IrisService;
 import lombok.Data;
@@ -39,7 +37,10 @@ public class ExternalDataSVC implements IrisService {
 
     @Override
     public void onEnable() {
-        addProvider(new OraxenDataProvider(), new ItemAdderDataProvider());
+        addProvider(
+//                new CustomItemsDataProvider(), //need this to be gradelized before i can add it to the master repo
+                new OraxenDataProvider(),
+                new ItemAdderDataProvider());
     }
 
     @Override
@@ -55,8 +56,8 @@ public class ExternalDataSVC implements IrisService {
         }
     }
 
-    public Optional<BlockData> getBlockData(NamespacedKey key) {
-        Optional<ExternalDataProvider> provider = providers.stream().filter(p -> p.isPresent() && p.isValidProvider(key)).findFirst();
+    public Optional<BlockData> getBlockData(Identifier key) {
+        Optional<ExternalDataProvider> provider = providers.stream().filter(p -> p.isPresent() && p.isValidProvider(key, false)).findFirst();
         if (provider.isEmpty())
             return Optional.empty();
         try {
@@ -67,10 +68,12 @@ public class ExternalDataSVC implements IrisService {
         }
     }
 
-    public Optional<ItemStack> getItemStack(NamespacedKey key) {
-        Optional<ExternalDataProvider> provider = providers.stream().filter(p -> p.isPresent() && p.isValidProvider(key)).findFirst();
-        if (provider.isEmpty())
+    public Optional<ItemStack> getItemStack(Identifier key) {
+        Optional<ExternalDataProvider> provider = providers.stream().filter(p -> p.isPresent() && p.isValidProvider(key, true)).findFirst();
+        if (provider.isEmpty()) {
+            Iris.warn("No matching Provider found for modded material \"%s\"!", key);
             return Optional.empty();
+        }
         try {
             return Optional.of(provider.get().getItemStack(key));
         } catch (MissingResourceException e) {
@@ -79,9 +82,15 @@ public class ExternalDataSVC implements IrisService {
         }
     }
 
-    public NamespacedKey[] getAllIdentifiers() {
-        KList<NamespacedKey> names = new KList<>();
+    public Identifier[] getAllBlockIdentifiers() {
+        KList<Identifier> names = new KList<>();
         providers.stream().filter(ExternalDataProvider::isPresent).forEach(p -> names.add(p.getBlockTypes()));
-        return names.toArray(new NamespacedKey[0]);
+        return names.toArray(new Identifier[0]);
+    }
+
+    public Identifier[] getAllItemIdentifiers() {
+        KList<Identifier> names = new KList<>();
+        providers.stream().filter(ExternalDataProvider::isPresent).forEach(p -> names.add(p.getItemTypes()));
+        return names.toArray(new Identifier[0]);
     }
 }

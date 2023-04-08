@@ -24,6 +24,7 @@ import com.volmit.iris.core.service.StudioSVC;
 import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.IrisDimension;
+import com.volmit.iris.engine.object.IrisEntity;
 import com.volmit.iris.engine.platform.PlatformChunkGenerator;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.decree.DecreeContext;
@@ -40,7 +41,9 @@ import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.jobs.QueueJob;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
@@ -325,7 +328,7 @@ public class CommandIris implements DecreeExecutor {
                     C.YELLOW + " - Caves not lining up",
                     C.YELLOW + " - Terrain layers not lining up",
                     C.RED + "Now that you are aware of the risks, and have made a back-up:",
-                    C.RED + "/iris ^world <world> <pack> confirm=true"
+                    C.RED + "/iris ^world " + world.getName() + " " + pack.getLoadKey() + " confirm=true"
             });
             return;
         }

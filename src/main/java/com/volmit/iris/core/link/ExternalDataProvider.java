@@ -26,11 +26,13 @@ public abstract class ExternalDataProvider {
 
     public abstract void init();
 
-    public abstract BlockData getBlockData(NamespacedKey blockId) throws MissingResourceException;
+    public abstract BlockData getBlockData(Identifier blockId) throws MissingResourceException;
 
-    public abstract ItemStack getItemStack(NamespacedKey itemId) throws MissingResourceException;
+    public abstract ItemStack getItemStack(Identifier itemId) throws MissingResourceException;
 
-    public abstract NamespacedKey[] getBlockTypes();
+    public abstract Identifier[] getBlockTypes();
 
-    public abstract boolean isValidProvider(NamespacedKey namespace);
+    public abstract Identifier[] getItemTypes();
+
+    public abstract boolean isValidProvider(Identifier id, boolean isItem);
 }

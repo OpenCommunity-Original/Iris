@@ -20,6 +20,7 @@ package com.volmit.iris.engine.object;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.link.Identifier;
 import com.volmit.iris.core.service.ExternalDataSVC;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.object.annotations.*;
@@ -39,8 +40,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import org.bukkit.DyeColor;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.craftbukkit.v1_19_R2.inventory.CraftItemStack;
+import org.bukkit.craftbukkit.v1_19_R3.inventory.CraftItemStack;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
@@ -149,10 +149,10 @@ public class IrisLoot {
     // TODO Better Third Party Item Acquisition
     private ItemStack getItemStack(RNG rng) {
         if (!type.startsWith("minecraft:") && type.contains(":")) {
-            Optional<ItemStack> opt = Iris.service(ExternalDataSVC.class).getItemStack(NamespacedKey.fromString(type));
+            Optional<ItemStack> opt = Iris.service(ExternalDataSVC.class).getItemStack(Identifier.fromString(type));
             if (opt.isEmpty()) {
                 Iris.warn("Unknown Material: " + type);
-                return null;
+                return new ItemStack(Material.AIR);
             }
             ItemStack is = opt.get();
             is.setAmount(Math.max(1, rng.i(getMinAmount(), getMaxAmount())));
@@ -198,8 +198,10 @@ public class IrisLoot {
             colorable.setColor(getDyeColor());
         }
 
-        m.setLocalizedName(C.translateAlternateColorCodes('&', displayName));
-        m.setDisplayName(C.translateAlternateColorCodes('&', displayName));
+        if(displayName != null) {
+            m.setLocalizedName(C.translateAlternateColorCodes('&', displayName));
+            m.setDisplayName(C.translateAlternateColorCodes('&', displayName));
+        }
 
         KList<String> lore = new KList<>();
 
