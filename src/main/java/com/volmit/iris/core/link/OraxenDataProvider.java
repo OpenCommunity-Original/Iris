@@ -35,7 +35,6 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
 import org.bukkit.inventory.ItemStack;
 
-import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.Optional;
@@ -52,6 +51,7 @@ public class OraxenDataProvider extends ExternalDataProvider {
 
     @Override
     public void init() {
+        Iris.info("Setting up Oraxen Link...");
         this.factories = new WrappedField<>(MechanicsManager.class, FIELD_FACTORIES_MAP);
         if(this.factories.hasFailed()) {
             Iris.error("Failed to set up Oraxen Link: Unable to fetch MechanicFactoriesMap!");
@@ -108,8 +108,14 @@ public class OraxenDataProvider extends ExternalDataProvider {
     }
 
     @Override
-    public boolean isPresent() {
-        return super.isPresent() && factories != null;
+    public boolean isReady() {
+        if(super.isReady()) {
+            if(factories == null) {
+                this.factories = new WrappedField<>(MechanicsManager.class, FIELD_FACTORIES_MAP);
+            }
+            return super.isReady() && !factories.hasFailed();
+        }
+        return false;
     }
 
     @Override
