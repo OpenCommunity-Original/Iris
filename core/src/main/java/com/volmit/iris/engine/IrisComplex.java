@@ -25,29 +25,33 @@ import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.*;
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.collection.KMap;
-import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.data.DataProvider;
+import com.volmit.iris.util.interpolation.IrisInterpolation.NoiseKey;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.noise.CNG;
 import com.volmit.iris.util.stream.ProceduralStream;
 import com.volmit.iris.util.stream.interpolation.Interpolated;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import org.bukkit.Material;
 import org.bukkit.block.Biome;
 import org.bukkit.block.data.BlockData;
 
-import java.util.UUID;
+import java.io.File;
+import java.util.*;
 
 @Data
+@EqualsAndHashCode(exclude = "data")
+@ToString(exclude = "data")
 public class IrisComplex implements DataProvider {
     private static final BlockData AIR = Material.AIR.createBlockData();
     private RNG rng;
     private double fluidHeight;
     private IrisData data;
-    private KMap<IrisInterpolator, KSet<IrisGenerator>> generators;
+    private Map<IrisInterpolator, Set<IrisGenerator>> generators;
     private ProceduralStream<IrisRegion> regionStream;
     private ProceduralStream<Double> regionStyleStream;
     private ProceduralStream<Double> regionIdentityStream;
@@ -85,17 +89,17 @@ public class IrisComplex implements DataProvider {
     }
 
     public IrisComplex(Engine engine, boolean simple) {
-        int cacheSize = IrisSettings.get().getPerformance().getCacheSize();
+        int cacheSize = IrisSettings.get().getPerformance().getNoiseCacheSize();
         IrisBiome emptyBiome = new IrisBiome();
         UUID focusUUID = UUID.nameUUIDFromBytes("focus".getBytes());
         this.rng = new RNG(engine.getSeedManager().getComplex());
         this.data = engine.getData();
         double height = engine.getMaxHeight();
         fluidHeight = engine.getDimension().getFluidHeight();
-        generators = new KMap<>();
+        generators = new HashMap<>();
         focusBiome = engine.getFocus();
         focusRegion = engine.getFocusRegion();
-        KMap<InferredType, ProceduralStream<IrisBiome>> inferredStreams = new KMap<>();
+        Map<InferredType, ProceduralStream<IrisBiome>> inferredStreams = new HashMap<>();
 
         if (focusBiome != null) {
             focusBiome.setInferredType(InferredType.LAND);
@@ -103,10 +107,16 @@ public class IrisComplex implements DataProvider {
         }
 
         //@builder
-        engine.getDimension().getRegions().forEach((i) -> data.getRegionLoader().load(i)
-                .getAllBiomes(this).forEach((b) -> b
-                        .getGenerators()
-                        .forEach((c) -> registerGenerator(c.getCachedGenerator(this)))));
+        if (focusRegion != null) {
+            focusRegion.getAllBiomes(this).forEach(this::registerGenerators);
+        } else {
+            engine.getDimension()
+                    .getRegions()
+                    .forEach(i -> data.getRegionLoader().load(i)
+                            .getAllBiomes(this)
+                            .forEach(this::registerGenerators));
+        }
+        boolean legacy = engine.getDimension().isLegacyRarity();
         overlayStream = ProceduralStream.ofDouble((x, z) -> 0.0D).waste("Overlay Stream");
         engine.getDimension().getOverlayNoise().forEach(i -> overlayStream = overlayStream.add((x, z) -> i.get(rng, getData(), x, z)));
         rockStream = engine.getDimension().getRockPalette().getLayerGenerator(rng.nextParallelRNG(45), data).stream()
@@ -120,39 +130,45 @@ public class IrisComplex implements DataProvider {
                 ProceduralStream.of((x, z) -> focusRegion,
                         Interpolated.of(a -> 0D, a -> focusRegion))
                 : regionStyleStream
-                .selectRarity(data.getRegionLoader().loadAll(engine.getDimension().getRegions()))
+                .selectRarity(data.getRegionLoader().loadAll(engine.getDimension().getRegions()), legacy)
                 .cache2D("regionStream", engine, cacheSize).waste("Region Stream");
         regionIDStream = regionIdentityStream.convertCached((i) -> new UUID(Double.doubleToLongBits(i),
                 String.valueOf(i * 38445).hashCode() * 3245556666L)).waste("Region ID Stream");
         caveBiomeStream = regionStream.contextInjecting((c, x, z) -> IrisContext.getOr(engine).getChunkContext().getRegion().get(x, z))
                 .convert((r)
                         -> engine.getDimension().getCaveBiomeStyle().create(rng.nextParallelRNG(InferredType.CAVE.ordinal()), getData()).stream()
+                        .zoom(engine.getDimension().getBiomeZoom())
                         .zoom(r.getCaveBiomeZoom())
-                        .selectRarity(data.getBiomeLoader().loadAll(r.getCaveBiomes()))
+                        .selectRarity(data.getBiomeLoader().loadAll(r.getCaveBiomes()), legacy)
                         .onNull(emptyBiome)
                 ).convertAware2D(ProceduralStream::get).cache2D("caveBiomeStream", engine, cacheSize).waste("Cave Biome Stream");
         inferredStreams.put(InferredType.CAVE, caveBiomeStream);
         landBiomeStream = regionStream.contextInjecting((c, x, z) -> IrisContext.getOr(engine).getChunkContext().getRegion().get(x, z))
                 .convert((r)
                         -> engine.getDimension().getLandBiomeStyle().create(rng.nextParallelRNG(InferredType.LAND.ordinal()), getData()).stream()
+                        .zoom(engine.getDimension().getBiomeZoom())
+                        .zoom(engine.getDimension().getLandZoom())
                         .zoom(r.getLandBiomeZoom())
-                        .selectRarity(data.getBiomeLoader().loadAll(r.getLandBiomes(), (t) -> t.setInferredType(InferredType.LAND)))
+                        .selectRarity(data.getBiomeLoader().loadAll(r.getLandBiomes(), (t) -> t.setInferredType(InferredType.LAND)), legacy)
                 ).convertAware2D(ProceduralStream::get)
                 .cache2D("landBiomeStream", engine, cacheSize).waste("Land Biome Stream");
         inferredStreams.put(InferredType.LAND, landBiomeStream);
         seaBiomeStream = regionStream.contextInjecting((c, x, z) -> IrisContext.getOr(engine).getChunkContext().getRegion().get(x, z))
                 .convert((r)
                         -> engine.getDimension().getSeaBiomeStyle().create(rng.nextParallelRNG(InferredType.SEA.ordinal()), getData()).stream()
+                        .zoom(engine.getDimension().getBiomeZoom())
+                        .zoom(engine.getDimension().getSeaZoom())
                         .zoom(r.getSeaBiomeZoom())
-                        .selectRarity(data.getBiomeLoader().loadAll(r.getSeaBiomes(), (t) -> t.setInferredType(InferredType.SEA)))
+                        .selectRarity(data.getBiomeLoader().loadAll(r.getSeaBiomes(), (t) -> t.setInferredType(InferredType.SEA)), legacy)
                 ).convertAware2D(ProceduralStream::get)
                 .cache2D("seaBiomeStream", engine, cacheSize).waste("Sea Biome Stream");
         inferredStreams.put(InferredType.SEA, seaBiomeStream);
         shoreBiomeStream = regionStream.contextInjecting((c, x, z) -> IrisContext.getOr(engine).getChunkContext().getRegion().get(x, z))
                 .convert((r)
                         -> engine.getDimension().getShoreBiomeStyle().create(rng.nextParallelRNG(InferredType.SHORE.ordinal()), getData()).stream()
+                        .zoom(engine.getDimension().getBiomeZoom())
                         .zoom(r.getShoreBiomeZoom())
-                        .selectRarity(data.getBiomeLoader().loadAll(r.getShoreBiomes(), (t) -> t.setInferredType(InferredType.SHORE)))
+                        .selectRarity(data.getBiomeLoader().loadAll(r.getShoreBiomes(), (t) -> t.setInferredType(InferredType.SHORE)), legacy)
                 ).convertAware2D(ProceduralStream::get).cache2D("shoreBiomeStream", engine, cacheSize).waste("Shore Biome Stream");
         inferredStreams.put(InferredType.SHORE, shoreBiomeStream);
         bridgeStream = focusBiome != null ? ProceduralStream.of((x, z) -> focusBiome.getInferredType(),
@@ -234,7 +250,15 @@ public class IrisComplex implements DataProvider {
             }
         }
 
-        return null;
+        String key = UUID.randomUUID().toString();
+        IrisRegion region = new IrisRegion();
+        region.getLandBiomes().add(focus.getLoadKey());
+        region.getSeaBiomes().add(focus.getLoadKey());
+        region.getShoreBiomes().add(focus.getLoadKey());
+        region.setLoadKey(key);
+        region.setLoader(data);
+        region.setLoadFile(new File(data.getDataFolder(), data.getRegionLoader().getFolderName() + "/" + key + ".json"));
+        return region;
     }
 
     private IrisDecorator decorateFor(IrisBiome b, double x, double z, IrisDecorationPart part) {
@@ -277,18 +301,20 @@ public class IrisComplex implements DataProvider {
         return biome;
     }
 
-    private double interpolateGenerators(Engine engine, IrisInterpolator interpolator, KSet<IrisGenerator> generators, double x, double z, long seed) {
+    private double interpolateGenerators(Engine engine, IrisInterpolator interpolator, Set<IrisGenerator> generators, double x, double z, long seed) {
         if (generators.isEmpty()) {
             return 0;
         }
 
+        HashMap<NoiseKey, IrisBiome> cache = new HashMap<>(64);
         double hi = interpolator.interpolate(x, z, (xx, zz) -> {
             try {
                 IrisBiome bx = baseBiomeStream.get(xx, zz);
+                cache.put(new NoiseKey(xx, zz), bx);
                 double b = 0;
 
                 for (IrisGenerator gen : generators) {
-                    b += bx.getGenLinkMax(gen.getLoadKey());
+                    b += bx.getGenLinkMax(gen.getLoadKey(), engine);
                 }
 
                 return b;
@@ -303,11 +329,15 @@ public class IrisComplex implements DataProvider {
 
         double lo = interpolator.interpolate(x, z, (xx, zz) -> {
             try {
-                IrisBiome bx = baseBiomeStream.get(xx, zz);
+                IrisBiome bx = cache.get(new NoiseKey(xx, zz));
+                if (bx == null) {
+                    bx = baseBiomeStream.get(xx, zz);
+                    cache.put(new NoiseKey(xx, zz), bx);
+                }
                 double b = 0;
 
                 for (IrisGenerator gen : generators) {
-                    b += bx.getGenLinkMin(gen.getLoadKey());
+                    b += bx.getGenLinkMin(gen.getLoadKey(), engine);
                 }
 
                 return b;
@@ -343,8 +373,12 @@ public class IrisComplex implements DataProvider {
         return Math.max(Math.min(getInterpolatedHeight(engine, x, z, seed) + fluidHeight + overlayStream.get(x, z), engine.getHeight()), 0);
     }
 
+    private void registerGenerators(IrisBiome biome) {
+        biome.getGenerators().forEach(c -> registerGenerator(c.getCachedGenerator(this)));
+    }
+
     private void registerGenerator(IrisGenerator cachedGenerator) {
-        generators.computeIfAbsent(cachedGenerator.getInterpolator(), (k) -> new KSet<>()).add(cachedGenerator);
+        generators.computeIfAbsent(cachedGenerator.getInterpolator(), (k) -> new HashSet<>()).add(cachedGenerator);
     }
 
     private IrisBiome implode(IrisBiome b, Double x, Double z) {

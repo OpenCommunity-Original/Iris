@@ -19,14 +19,23 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.core.ServerConfigurator.DimensionHeight;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.loader.IrisRegistrant;
+import com.volmit.iris.core.nms.INMS;
+import com.volmit.iris.core.nms.datapack.IDataFixer;
+import com.volmit.iris.core.nms.datapack.IDataFixer.Dimension;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.object.annotations.*;
+import com.volmit.iris.engine.object.annotations.functions.ComponentFlagFunction;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.data.DataProvider;
 import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.json.JSONObject;
+import com.volmit.iris.util.mantle.flag.MantleFlag;
 import com.volmit.iris.util.math.Position2;
 import com.volmit.iris.util.math.RNG;
 import com.volmit.iris.util.noise.CNG;
@@ -40,8 +49,7 @@ import org.bukkit.Material;
 import org.bukkit.World.Environment;
 import org.bukkit.block.data.BlockData;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 
 @Accessors(chain = true)
 @AllArgsConstructor
@@ -52,73 +60,6 @@ import java.io.IOException;
 public class IrisDimension extends IrisRegistrant {
     public static final BlockData STONE = Material.STONE.createBlockData();
     public static final BlockData WATER = Material.WATER.createBlockData();
-    private static final String DP_OVERWORLD_DEFAULT = """
-            {
-              "ambient_light": 0.0,
-              "bed_works": true,
-              "coordinate_scale": 1.0,
-              "effects": "minecraft:overworld",
-              "has_ceiling": false,
-              "has_raids": true,
-              "has_skylight": true,
-              "infiniburn": "#minecraft:infiniburn_overworld",
-              "monster_spawn_block_light_limit": 0,
-              "monster_spawn_light_level": {
-                "type": "minecraft:uniform",
-                "value": {
-                  "max_inclusive": 7,
-                  "min_inclusive": 0
-                }
-              },
-              "natural": true,
-              "piglin_safe": false,
-              "respawn_anchor_works": false,
-              "ultrawarm": false
-            }""";
-
-    private static final String DP_NETHER_DEFAULT = """
-            {
-              "ambient_light": 0.1,
-              "bed_works": false,
-              "coordinate_scale": 8.0,
-              "effects": "minecraft:the_nether",
-              "fixed_time": 18000,
-              "has_ceiling": true,
-              "has_raids": false,
-              "has_skylight": false,
-              "infiniburn": "#minecraft:infiniburn_nether",
-              "monster_spawn_block_light_limit": 15,
-              "monster_spawn_light_level": 7,
-              "natural": false,
-              "piglin_safe": true,
-              "respawn_anchor_works": true,
-              "ultrawarm": true
-            }""";
-
-    private static final String DP_END_DEFAULT = """
-            {
-              "ambient_light": 0.0,
-              "bed_works": false,
-              "coordinate_scale": 1.0,
-              "effects": "minecraft:the_end",
-              "fixed_time": 6000,
-              "has_ceiling": false,
-              "has_raids": true,
-              "has_skylight": false,
-              "infiniburn": "#minecraft:infiniburn_end",
-              "monster_spawn_block_light_limit": 0,
-              "monster_spawn_light_level": {
-                "type": "minecraft:uniform",
-                "value": {
-                  "max_inclusive": 7,
-                  "min_inclusive": 0
-                }
-              },
-              "natural": false,
-              "piglin_safe": false,
-              "respawn_anchor_works": false,
-              "ultrawarm": false
-            }""";
     private final transient AtomicCache<Position2> parallaxSize = new AtomicCache<>();
     private final transient AtomicCache<CNG> rockLayerGenerator = new AtomicCache<>();
     private final transient AtomicCache<CNG> fluidLayerGenerator = new AtomicCache<>();
@@ -128,6 +69,7 @@ public class IrisDimension extends IrisRegistrant {
     private final transient AtomicCache<Double> rad = new AtomicCache<>();
     private final transient AtomicCache<Boolean> featuresUsed = new AtomicCache<>();
     private final transient AtomicCache<KList<Position2>> strongholdsCache = new AtomicCache<>();
+    private final transient AtomicCache<KMap<String, KList<String>>> cachedPreProcessors = new AtomicCache<>();
     @MinNumber(2)
     @Required
     @Desc("The human readable name of this dimension")
@@ -136,10 +78,6 @@ public class IrisDimension extends IrisRegistrant {
     @MaxNumber(2032)
     @Desc("Maximum height at which players can be teleported to through gameplay.")
     private int logicalHeight = 256;
-    @Desc("Maximum height at which players can be teleported to through gameplay.")
-    private int logicalHeightEnd = 256;
-    @Desc("Maximum height at which players can be teleported to through gameplay.")
-    private int logicalHeightNether = 256;
     @RegistryListResource(IrisJigsawStructure.class)
     @Desc("If defined, Iris will place the given jigsaw structure where minecraft should place the overworld stronghold.")
     private String stronghold;
@@ -207,6 +145,8 @@ public class IrisDimension extends IrisRegistrant {
     private IrisCarving carving = new IrisCarving();
     @Desc("Configuration of fluid bodies such as rivers & lakes")
     private IrisFluidBodies fluidBodies = new IrisFluidBodies();
+    @Desc("forceConvertTo320Height")
+    private Boolean forceConvertTo320Height = false;
     @Desc("The world environment")
     private Environment environment = Environment.NORMAL;
     @RegistryListResource(IrisRegion.class)
@@ -217,6 +157,8 @@ public class IrisDimension extends IrisRegistrant {
     @ArrayType(min = 1, type = IrisJigsawStructurePlacement.class)
     @Desc("Jigsaw structures")
     private KList<IrisJigsawStructurePlacement> jigsawStructures = new KList<>();
+    @Desc("The jigsaw structure divisor to use when generating missing jigsaw placement values")
+    private double jigsawStructureDivisor = 18;
     @Required
     @MinNumber(0)
     @MaxNumber(1024)
@@ -224,10 +166,8 @@ public class IrisDimension extends IrisRegistrant {
     private int fluidHeight = 63;
     @Desc("Define the min and max Y bounds of this dimension. Please keep in mind that Iris internally generates from 0 to (max - min). \n\nFor example at -64 to 320, Iris is internally generating to 0 to 384, then on outputting chunks, it shifts it down by the min height (64 blocks). The default is -64 to 320. \n\nThe fluid height is placed at (fluid height + min height). So a fluid height of 63 would actually show up in the world at 1.")
     private IrisRange dimensionHeight = new IrisRange(-64, 320);
-    @Desc("Define the min and max Y bounds of this dimension. Please keep in mind that Iris internally generates from 0 to (max - min). \n\nFor example at -64 to 320, Iris is internally generating to 0 to 384, then on outputting chunks, it shifts it down by the min height (64 blocks). The default is -64 to 320. \n\nThe fluid height is placed at (fluid height + min height). So a fluid height of 63 would actually show up in the world at 1.")
-    private IrisRange dimensionHeightEnd = new IrisRange(-64, 320);
-    @Desc("Define the min and max Y bounds of this dimension. Please keep in mind that Iris internally generates from 0 to (max - min). \n\nFor example at -64 to 320, Iris is internally generating to 0 to 384, then on outputting chunks, it shifts it down by the min height (64 blocks). The default is -64 to 320. \n\nThe fluid height is placed at (fluid height + min height). So a fluid height of 63 would actually show up in the world at 1.")
-    private IrisRange dimensionHeightNether = new IrisRange(-64, 320);
+    @Desc("Define options for this dimension")
+    private IrisDimensionTypeOptions dimensionOptions = new IrisDimensionTypeOptions();
     @RegistryListResource(IrisBiome.class)
     @Desc("Keep this either undefined or empty. Setting any biome name into this will force iris to only generate the specified biome. Great for testing.")
     private String focus = "";
@@ -237,7 +177,7 @@ public class IrisDimension extends IrisRegistrant {
     @MinNumber(0.0001)
     @MaxNumber(512)
     @Desc("Zoom in or out the biome size. Higher = bigger biomes")
-    private double biomeZoom = 5D;
+    private double biomeZoom = 1D;
     @MinNumber(0)
     @MaxNumber(360)
     @Desc("You can rotate the input coordinates by an angle. This can make terrain appear more natural (less sharp corners and lines). This literally rotates the entire dimension by an angle. Hint: Try 12 degrees or something not on a 90 or 45 degree angle.")
@@ -293,10 +233,8 @@ public class IrisDimension extends IrisRegistrant {
     private IrisMaterialPalette rockPalette = new IrisMaterialPalette().qclear().qadd("stone");
     @Desc("The palette of blocks for 'water'")
     private IrisMaterialPalette fluidPalette = new IrisMaterialPalette().qclear().qadd("water");
-    @Desc("Remove cartographers so they do not crash the server (Iris worlds only)")
-    private boolean removeCartographersDueToCrash = true;
-    @Desc("Notify players of cancelled cartographer villager in this radius in blocks (set to -1 to disable, -2 for everyone)")
-    private int notifyPlayersOfCartographerCancelledRadius = 30;
+    @Desc("Prevent cartographers to generate explorer maps (Iris worlds only)\nONLY TOUCH IF YOUR SERVER CRASHES WHILE GENERATING EXPLORER MAPS")
+    private boolean disableExplorerMaps = false;
     @Desc("Collection of ores to be generated")
     @ArrayType(type = IrisOreGenerator.class, min = 1)
     private KList<IrisOreGenerator> ores = new KList<>();
@@ -304,6 +242,27 @@ public class IrisDimension extends IrisRegistrant {
     @MaxNumber(318)
     @Desc("The Subterrain Fluid Layer Height")
     private int caveLavaHeight = 8;
+    @RegistryListFunction(ComponentFlagFunction.class)
+    @ArrayType(type = String.class)
+    @Desc("Collection of disabled components")
+    private KList<MantleFlag> disabledComponents = new KList<>();
+    @Desc("A list of globally applied pre-processors")
+    @ArrayType(type = IrisPreProcessors.class)
+    private KList<IrisPreProcessors> globalPreProcessors = new KList<>();
+    @Desc("A list of scripts executed on engine setup\nFile extension: .engine.kts")
+    @RegistryListResource(IrisScript.class)
+    @ArrayType(type = String.class, min = 1)
+    private KList<String> engineScripts = new KList<>();
+    @Desc("A list of scripts executed on data setup\nFile extension: .data.kts")
+    @RegistryListResource(IrisScript.class)
+    @ArrayType(type = String.class, min = 1)
+    private KList<String> dataScripts = new KList<>();
+    @Desc("A list of scripts executed on chunk update\nFile extension: .update.kts")
+    @RegistryListResource(IrisScript.class)
+    @ArrayType(type = String.class, min = 1)
+    private KList<String> chunkUpdateScripts = new KList<>();
+    @Desc("Use legacy rarity instead of modern one\nWARNING: Changing this may break expressions and image maps")
+    private boolean legacyRarity = true;
 
     public int getMaxHeight() {
         return (int) getDimensionHeight().getMax();
@@ -313,12 +272,14 @@ public class IrisDimension extends IrisRegistrant {
         return (int) getDimensionHeight().getMin();
     }
 
-    public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data) {
+    public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data, boolean surface) {
         if (ores.isEmpty()) {
             return null;
         }
         BlockData b = null;
         for (IrisOreGenerator i : ores) {
+            if (i.isGenerateSurface() != surface)
+                continue;
 
             b = i.generate(x, y, z, rng, data);
             if (b != null) {
@@ -398,7 +359,7 @@ public class IrisDimension extends IrisRegistrant {
         KList<IrisRegion> r = new KList<>();
 
         for (String i : getRegions()) {
-            r.add(IrisData.loadAnyRegion(i));
+            r.add(IrisData.loadAnyRegion(i, getLoader()));
         }
 
         return r;
@@ -422,6 +383,17 @@ public class IrisDimension extends IrisRegistrant {
         return r;
     }
 
+    public KList<String> getPreProcessors(String type) {
+        return cachedPreProcessors.aquire(() -> {
+            KMap<String, KList<String>> preProcessors = new KMap<>();
+            for (var entry : globalPreProcessors) {
+                preProcessors.computeIfAbsent(entry.getType(), k -> new KList<>())
+                        .addAll(entry.getScripts());
+            }
+            return preProcessors;
+        }).get(type);
+    }
+
     public IrisGeneratorStyle getBiomeStyle(InferredType type) {
         switch (type) {
             case CAVE:
@@ -439,59 +411,68 @@ public class IrisDimension extends IrisRegistrant {
         return landBiomeStyle;
     }
 
-    public boolean installDataPack(DataProvider data, File datapacks) {
-        boolean write = false;
-        boolean changed = false;
-
-        IO.delete(new File(datapacks, "iris/data/" + getLoadKey().toLowerCase()));
-
-        for (IrisBiome i : getAllBiomes(data)) {
-            if (i.isCustom()) {
-                write = true;
-
-                for (IrisBiomeCustom j : i.getCustomDerivitives()) {
-                    File output = new File(datapacks, "iris/data/" + getLoadKey().toLowerCase() + "/worldgen/biome/" + j.getId() + ".json");
-
-                    if (!output.exists()) {
-                        changed = true;
-                    }
-
-                    Iris.verbose("    Installing Data Pack Biome: " + output.getPath());
-                    output.getParentFile().mkdirs();
-                    try {
-                        IO.writeAll(output, j.generateJson());
-                    } catch (IOException e) {
-                        Iris.reportError(e);
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-
-        if (!dimensionHeight.equals(new IrisRange(-64, 320)) && this.name.equalsIgnoreCase("overworld")) {
-            Iris.verbose("    Installing Data Pack Dimension Types: \"minecraft:overworld\", \"minecraft:the_nether\", \"minecraft:the_end\"");
-            changed = writeDimensionType(changed, datapacks);
-        }
-
-        if (write) {
-            File mcm = new File(datapacks, "iris/pack.mcmeta");
-            try {
-                IO.writeAll(mcm, """
-                        {
-                            "pack": {
-                                "description": "Iris Data Pack. This pack contains all installed Iris Packs' resources.",
-                                "pack_format": 10
-                            }
+    public void installBiomes(IDataFixer fixer, DataProvider data, KList<File> folders, KSet<String> biomes) {
+        getAllBiomes(data)
+                .stream()
+                .filter(IrisBiome::isCustom)
+                .map(IrisBiome::getCustomDerivitives)
+                .flatMap(KList::stream)
+                .parallel()
+                .forEach(j -> {
+                    String json = j.generateJson(fixer);
+                    synchronized (biomes) {
+                        if (!biomes.add(j.getId())) {
+                            Iris.verbose("Duplicate Data Pack Biome: " + getLoadKey() + "/" + j.getId());
+                            return;
                         }
-                        """);
+                    }
+
+                    for (File datapacks : folders) {
+                        File output = new File(datapacks, "iris/data/" + getLoadKey().toLowerCase() + "/worldgen/biome/" + j.getId() + ".json");
+
+                        Iris.verbose("    Installing Data Pack Biome: " + output.getPath());
+                        output.getParentFile().mkdirs();
+                        try {
+                            IO.writeAll(output, json);
+                        } catch (IOException e) {
+                            Iris.reportError(e);
+                            e.printStackTrace();
+                        }
+                    }
+                });
+    }
+
+    public Dimension getBaseDimension() {
+        return switch (getEnvironment()) {
+            case NETHER -> Dimension.NETHER;
+            case THE_END -> Dimension.END;
+            default -> Dimension.OVERWORLD;
+        };
+    }
+
+    public String getDimensionTypeKey() {
+        return getDimensionType().key();
+    }
+
+    public IrisDimensionType getDimensionType() {
+        return new IrisDimensionType(getBaseDimension(), getDimensionOptions(), getLogicalHeight(), getMaxHeight() - getMinHeight(), getMinHeight());
+    }
+
+    public void installDimensionType(IDataFixer fixer, KList<File> folders) {
+        IrisDimensionType type = getDimensionType();
+        String json = type.toJson(fixer);
+
+        Iris.verbose("    Installing Data Pack Dimension Type: \"iris:" + type.key() + '"');
+        for (File datapacks : folders) {
+            File output = new File(datapacks, "iris/data/iris/dimension_type/" + type.key() + ".json");
+            output.getParentFile().mkdirs();
+            try {
+                IO.writeAll(output, json);
             } catch (IOException e) {
                 Iris.reportError(e);
                 e.printStackTrace();
             }
-            Iris.verbose("    Installing Data Pack MCMeta: " + mcm.getPath());
         }
-
-        return changed;
     }
 
     @Override
@@ -509,66 +490,48 @@ public class IrisDimension extends IrisRegistrant {
 
     }
 
-    public boolean writeDimensionType(boolean changed, File datapacks) {
-        File dimTypeOverworld = new File(datapacks, "iris/data/minecraft/dimension_type/overworld.json");
-        if (!dimTypeOverworld.exists())
-            changed = true;
-        dimTypeOverworld.getParentFile().mkdirs();
-        try {
-            IO.writeAll(dimTypeOverworld, generateDatapackJsonOverworld());
-        } catch (IOException e) {
-            Iris.reportError(e);
-            e.printStackTrace();
+    public static void writeShared(KList<File> folders, DimensionHeight height) {
+        Iris.verbose("    Installing Data Pack Vanilla Dimension Types");
+        String[] jsonStrings = height.jsonStrings();
+        for (File datapacks : folders) {
+            write(datapacks, "overworld", jsonStrings[0]);
+            write(datapacks, "the_nether", jsonStrings[1]);
+            write(datapacks, "the_end", jsonStrings[2]);
         }
 
+        String raw = """
+                        {
+                            "pack": {
+                                "description": "Iris Data Pack. This pack contains all installed Iris Packs' resources.",
+                                "pack_format": {}
+                            }
+                        }
+                        """.replace("{}", INMS.get().getDataVersion().getPackFormat() + "");
 
-        File dimTypeNether = new File(datapacks, "iris/data/minecraft/dimension_type/the_nether.json");
-        if (!dimTypeNether.exists())
-            changed = true;
-        dimTypeNether.getParentFile().mkdirs();
-        try {
-            IO.writeAll(dimTypeNether, generateDatapackJsonNether());
-        } catch (IOException e) {
-            Iris.reportError(e);
-            e.printStackTrace();
+        for (File datapacks : folders) {
+            File mcm = new File(datapacks, "iris/pack.mcmeta");
+            try {
+                IO.writeAll(mcm, raw);
+            } catch (IOException e) {
+                Iris.reportError(e);
+                e.printStackTrace();
+            }
+            Iris.verbose("    Installing Data Pack MCMeta: " + mcm.getPath());
         }
+    }
 
+    private static void write(File datapacks, String type, String json) {
+        if (json == null) return;
+        File dimTypeVanilla = new File(datapacks, "iris/data/minecraft/dimension_type/" + type + ".json");
 
-        File dimTypeEnd = new File(datapacks, "iris/data/minecraft/dimension_type/the_end.json");
-        if (!dimTypeEnd.exists())
-            changed = true;
-        dimTypeEnd.getParentFile().mkdirs();
-        try {
-            IO.writeAll(dimTypeEnd, generateDatapackJsonEnd());
-        } catch (IOException e) {
-            Iris.reportError(e);
-            e.printStackTrace();
+        if (IrisSettings.get().getGeneral().adjustVanillaHeight || dimTypeVanilla.exists()) {
+            dimTypeVanilla.getParentFile().mkdirs();
+            try {
+                IO.writeAll(dimTypeVanilla, json);
+            } catch (IOException e) {
+                Iris.reportError(e);
+                e.printStackTrace();
+            }
         }
-
-        return changed;
-    }
-
-    private String generateDatapackJsonOverworld() {
-        JSONObject obj = new JSONObject(DP_OVERWORLD_DEFAULT);
-        obj.put("min_y", dimensionHeight.getMin());
-        obj.put("height", dimensionHeight.getMax() - dimensionHeight.getMin());
-        obj.put("logical_height", logicalHeight);
-        return obj.toString(4);
-    }
-
-    private String generateDatapackJsonNether() {
-        JSONObject obj = new JSONObject(DP_NETHER_DEFAULT);
-        obj.put("min_y", dimensionHeightNether.getMin());
-        obj.put("height", dimensionHeightNether.getMax() - dimensionHeightNether.getMin());
-        obj.put("logical_height", logicalHeightNether);
-        return obj.toString(4);
-    }
-
-    private String generateDatapackJsonEnd() {
-        JSONObject obj = new JSONObject(DP_END_DEFAULT);
-        obj.put("min_y", dimensionHeightEnd.getMin());
-        obj.put("height", dimensionHeightEnd.getMax() - dimensionHeightEnd.getMin());
-        obj.put("logical_height", logicalHeightEnd);
-        return obj.toString(4);
     }
 }

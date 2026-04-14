@@ -21,24 +21,27 @@ package com.volmit.iris.util.mantle;
 import com.volmit.iris.Iris;
 import com.volmit.iris.engine.EnginePanic;
 import com.volmit.iris.engine.data.cache.Cache;
+import com.volmit.iris.util.data.Varint;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
-import com.volmit.iris.util.format.C;
-import com.volmit.iris.util.format.Form;
-import com.volmit.iris.util.scheduling.PrecisionStopwatch;
+import com.volmit.iris.util.io.CountingDataInputStream;
 import lombok.Getter;
 
 import java.io.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 /**
  * Tectonic Plates are essentially representations of regions in minecraft.
  * Tectonic Plates are fully atomic & thread safe
  */
 public class TectonicPlate {
+    private static final ThreadLocal<Boolean> errors = ThreadLocal.withInitial(() -> false);
+    public static final int MISSING = -1;
+    public static final int CURRENT = 1;
+
     private final int sectionHeight;
     private final AtomicReferenceArray<MantleChunk> chunks;
+    private final AtomicBoolean closed;
 
     @Getter
     private final int x;
@@ -54,6 +57,7 @@ public class TectonicPlate {
     public TectonicPlate(int worldHeight, int x, int z) {
         this.sectionHeight = worldHeight >> 4;
         this.chunks = new AtomicReferenceArray<>(1024);
+        this.closed = new AtomicBoolean(false);
         this.x = x;
         this.z = z;
     }
@@ -64,27 +68,58 @@ public class TectonicPlate {
      * @param worldHeight the height of the world
      * @param din         the data input
      * @throws IOException            shit happens yo
-     * @throws ClassNotFoundException real shit bro
      */
-    public TectonicPlate(int worldHeight, DataInputStream din) throws IOException, ClassNotFoundException {
+    public TectonicPlate(int worldHeight, CountingDataInputStream din, boolean versioned) throws IOException {
         this(worldHeight, din.readInt(), din.readInt());
+        if (!din.markSupported())
+            throw new IOException("Mark not supported!");
+
+        int v = versioned ? Varint.readUnsignedVarInt(din) : MISSING;
         for (int i = 0; i < chunks.length(); i++) {
-            if (din.readBoolean()) {
+            long size = din.readInt();
+            if (size == 0) continue;
+            long start = din.count();
+
+            try {
                 Iris.addPanic("read-chunk", "Chunk[" + i + "]");
-                chunks.set(i, new MantleChunk(sectionHeight, din));
+                chunks.set(i, new MantleChunk(v, sectionHeight, din));
                 EnginePanic.saveLast();
+            } catch (Throwable e) {
+                long end = start + size;
+                Iris.error("Failed to read chunk, creating a new chunk instead.");
+                Iris.addPanic("read.byte.range", start + " " + end);
+                Iris.addPanic("read.byte.current", din.count() + "");
+                Iris.reportError(e);
+                e.printStackTrace();
+                Iris.panic();
+
+                din.skipTo(end);
+                TectonicPlate.addError();
             }
         }
     }
 
-    public static TectonicPlate read(int worldHeight, File file) throws IOException, ClassNotFoundException {
-        FileInputStream fin = new FileInputStream(file);
-        GZIPInputStream gzi = new GZIPInputStream(fin);
-        DataInputStream din = new DataInputStream(gzi);
-        TectonicPlate p = new TectonicPlate(worldHeight, din);
-        din.close();
+    public boolean inUse() {
+        for (int i = 0; i < chunks.length(); i++) {
+            MantleChunk chunk = chunks.get(i);
+            if (chunk != null && chunk.inUse())
+                return true;
+        }
+        return false;
+    }
 
-        return p;
+    public void close() throws InterruptedException {
+        closed.set(true);
+        for (int i = 0; i < chunks.length(); i++) {
+            MantleChunk chunk = chunks.get(i);
+            if (chunk != null) {
+                chunk.close();
+            }
+        }
+    }
+
+    public boolean isClosed() {
+        return closed.get();
     }
 
     /**
@@ -140,35 +175,18 @@ public class TectonicPlate {
      */
     @ChunkCoordinates
     public MantleChunk getOrCreate(int x, int z) {
-        MantleChunk chunk = get(x, z);
+        final int index = index(x, z);
+        final MantleChunk chunk = chunks.get(index);
+        if (chunk != null) return chunk;
 
-        if (chunk == null) {
-            chunk = new MantleChunk(sectionHeight, x & 31, z & 31);
-            chunks.set(index(x, z), chunk);
-        }
-
-        return chunk;
+        final MantleChunk instance = new MantleChunk(sectionHeight, x & 31, z & 31);
+        final MantleChunk value = chunks.compareAndExchange(index, null, instance);
+        return value == null ? instance : value;
     }
 
     @ChunkCoordinates
     private int index(int x, int z) {
         return Cache.to1D(x, z, 0, 32, 32);
-    }
-
-    /**
-     * Write this tectonic plate to file
-     *
-     * @param file the file to writeNodeData it to
-     * @throws IOException shit happens
-     */
-    public void write(File file) throws IOException {
-        PrecisionStopwatch p = PrecisionStopwatch.start();
-        FileOutputStream fos = new FileOutputStream(file);
-        GZIPOutputStream gzo = new GZIPOutputStream(fos);
-        DataOutputStream dos = new DataOutputStream(gzo);
-        write(dos);
-        dos.close();
-        Iris.debug("Saved Tectonic Plate " + C.DARK_GREEN + file.getName().split("\\Q.\\E")[0] + C.RED + " in " + Form.duration(p.getMilliseconds(), 2));
     }
 
     /**
@@ -180,16 +198,36 @@ public class TectonicPlate {
     public void write(DataOutputStream dos) throws IOException {
         dos.writeInt(x);
         dos.writeInt(z);
+        Varint.writeUnsignedVarInt(CURRENT, dos);
 
+        var bytes = new ByteArrayOutputStream(8192);
+        var sub = new DataOutputStream(bytes);
         for (int i = 0; i < chunks.length(); i++) {
             MantleChunk chunk = chunks.get(i);
 
             if (chunk != null) {
-                dos.writeBoolean(true);
-                chunk.write(dos);
+                try {
+                    chunk.write(sub);
+                    dos.writeInt(bytes.size());
+                    bytes.writeTo(dos);
+                } finally {
+                    bytes.reset();
+                }
             } else {
-                dos.writeBoolean(false);
+                dos.writeInt(0);
             }
+        }
+    }
+
+    public static void addError() {
+        errors.set(true);
+    }
+
+    public static boolean hasError() {
+        try {
+            return errors.get();
+        } finally {
+            errors.remove();
         }
     }
 }

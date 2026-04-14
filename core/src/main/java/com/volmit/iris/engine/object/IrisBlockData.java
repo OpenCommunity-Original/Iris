@@ -19,8 +19,10 @@
 package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.link.Identifier;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.loader.IrisRegistrant;
+import com.volmit.iris.core.nms.INMS;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
@@ -33,8 +35,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
+import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
-import org.bukkit.entity.EntityType;
 
 import java.util.Map;
 
@@ -59,8 +61,11 @@ public class IrisBlockData extends IrisRegistrant {
     private int weight = 1;
     @Desc("If the block cannot be created on this version, Iris will attempt to use this backup block data instead.")
     private IrisBlockData backup = null;
+    @RegistryMapBlockState("block")
     @Desc("Optional properties for this block data such as 'waterlogged': true")
     private KMap<String, Object> data = new KMap<>();
+    @Desc("Optional tile data for this block data")
+    private KMap<String, Object> tileData = new KMap<>();
 
     public IrisBlockData(String b) {
         this.block = b;
@@ -196,17 +201,20 @@ public class IrisBlockData extends IrisRegistrant {
         });
     }
 
-    public TileData<?> tryGetTile() {
+    public TileData tryGetTile(IrisData data) {
         //TODO Do like a registry thing with the tile data registry. Also update the parsing of data to include **block** entities.
-        if (data.containsKey("entitySpawn")) {
-            TileSpawner spawner = new TileSpawner();
-            String name = (String) data.get("entitySpawn");
-            if (name.contains(":"))
-                name = name.split(":")[1];
-            spawner.setEntityType(EntityType.fromName(name));
-            return spawner;
+        var type = getBlockData(data).getMaterial();
+        if (type == Material.SPAWNER && this.data.containsKey("entitySpawn")) {
+            String id = (String) this.data.get("entitySpawn");
+            if (tileData == null) tileData = new KMap<>();
+            KMap<String, Object> spawnData = (KMap<String, Object>) tileData.computeIfAbsent("SpawnData", k -> new KMap<>());
+            KMap<String, Object> entity = (KMap<String, Object>) spawnData.computeIfAbsent("entity", k -> new KMap<>());
+            entity.putIfAbsent("id", Identifier.fromString(id).toString());
         }
-        return null;
+
+        if (!INMS.get().hasTile(type) || tileData == null || tileData.isEmpty())
+            return null;
+        return new TileData(type, this.tileData);
     }
 
     private String keyify(String dat) {

@@ -18,29 +18,77 @@
 
 package com.volmit.iris.util.collection;
 
+import org.jetbrains.annotations.NotNull;
+
+import java.io.Serializable;
+import java.util.AbstractSet;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class KSet<T> extends HashSet<T> {
+public class KSet<T> extends AbstractSet<T> implements Serializable {
     private static final long serialVersionUID = 1L;
-
-    public KSet() {
-        super();
-    }
+    private final ConcurrentHashMap<T, Boolean> map;
 
     public KSet(Collection<? extends T> c) {
-        super(c);
+        this(c.size());
+        addAll(c);
+    }
+
+    @SafeVarargs
+    public KSet(T... values) {
+        this(values.length);
+        addAll(Arrays.asList(values));
     }
 
     public KSet(int initialCapacity, float loadFactor) {
-        super(initialCapacity, loadFactor);
+        map = new ConcurrentHashMap<>(initialCapacity, loadFactor);
     }
 
     public KSet(int initialCapacity) {
-        super(initialCapacity);
+        map = new ConcurrentHashMap<>(initialCapacity);
+    }
+
+    public static <T> KSet<T> merge(Collection<? extends T> first, Collection<? extends T> second) {
+        var set = new KSet<T>();
+        set.addAll(first);
+        set.addAll(second);
+        return set;
+    }
+
+    @Override
+    public int size() {
+        return map.size();
+    }
+
+    @Override
+    public boolean contains(Object o) {
+        return map.containsKey(o);
+    }
+
+    @Override
+    public boolean add(T t) {
+        return map.putIfAbsent(t, Boolean.TRUE) == null;
+    }
+
+    @Override
+    public boolean remove(Object o) {
+        return map.remove(o) != null;
+    }
+
+    @Override
+    public void clear() {
+        map.clear();
+    }
+
+    @NotNull
+    @Override
+    public Iterator<T> iterator() {
+        return map.keySet().iterator();
     }
 
     public KSet<T> copy() {
-        return new KSet<T>(this);
+        return new KSet<>(this);
     }
 }

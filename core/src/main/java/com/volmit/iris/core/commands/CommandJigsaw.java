@@ -21,6 +21,7 @@ package com.volmit.iris.core.commands;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.edit.JigsawEditor;
 import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.engine.framework.placer.WorldObjectPlacer;
 import com.volmit.iris.engine.jigsaw.PlannedStructure;
 import com.volmit.iris.engine.object.IrisJigsawPiece;
 import com.volmit.iris.engine.object.IrisJigsawStructure;
@@ -34,6 +35,7 @@ import com.volmit.iris.util.decree.specialhandlers.ObjectHandler;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
 import com.volmit.iris.util.math.RNG;
+import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 
 import java.io.File;
@@ -46,7 +48,7 @@ public class CommandJigsaw implements DecreeExecutor {
             IrisJigsawPiece piece
     ) {
         File dest = piece.getLoadFile();
-        new JigsawEditor(player(), piece, IrisData.loadAnyObject(piece.getObject()), dest);
+        new JigsawEditor(player(), piece, IrisData.loadAnyObject(piece.getObject(), data()), dest);
     }
 
     @Decree(description = "Place a jigsaw structure")
@@ -55,9 +57,16 @@ public class CommandJigsaw implements DecreeExecutor {
             IrisJigsawStructure structure
     ) {
         PrecisionStopwatch p = PrecisionStopwatch.start();
-        PlannedStructure ps = new PlannedStructure(structure, new IrisPosition(player().getLocation()), new RNG());
-        sender().sendMessage(C.GREEN + "Generated " + ps.getPieces().size() + " pieces in " + Form.duration(p.getMilliseconds(), 2));
-        ps.place(world());
+        try {
+            var world = world();
+            WorldObjectPlacer placer = new WorldObjectPlacer(world);
+            PlannedStructure ps = new PlannedStructure(structure, new IrisPosition(player().getLocation().add(0, world.getMinHeight(), 0)), new RNG(), true);
+            VolmitSender sender = sender();
+            sender.sendMessage(C.GREEN + "Generated " + ps.getPieces().size() + " pieces in " + Form.duration(p.getMilliseconds(), 2));
+            ps.place(placer, failed -> sender.sendMessage(failed ? C.GREEN + "Placed the structure!" : C.RED + "Failed to place the structure!"));
+        } catch (IllegalArgumentException e) {
+            sender().sendMessage(C.RED + "Failed to place the structure: " + e.getMessage());
+        }
     }
 
     @Decree(description = "Create a jigsaw piece")
@@ -69,7 +78,7 @@ public class CommandJigsaw implements DecreeExecutor {
             @Param(description = "The object to use for this piece", customHandler = ObjectHandler.class)
             String object
     ) {
-        IrisObject o = IrisData.loadAnyObject(object);
+        IrisObject o = IrisData.loadAnyObject(object, data());
 
         if (object == null) {
             sender().sendMessage(C.RED + "Failed to find existing object");

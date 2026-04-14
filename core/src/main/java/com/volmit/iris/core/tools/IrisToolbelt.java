@@ -24,6 +24,7 @@ import com.volmit.iris.core.gui.PregeneratorJob;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.pregenerator.PregenTask;
 import com.volmit.iris.core.pregenerator.PregeneratorMethod;
+import com.volmit.iris.core.pregenerator.methods.CachedPregenMethod;
 import com.volmit.iris.core.pregenerator.methods.HybridPregenMethod;
 import com.volmit.iris.core.service.StudioSVC;
 import com.volmit.iris.engine.framework.Engine;
@@ -33,6 +34,7 @@ import com.volmit.iris.util.plugin.VolmitSender;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,6 +46,7 @@ import java.util.Map;
  * Hope you packed snacks & road sodas.
  */
 public class IrisToolbelt {
+    @ApiStatus.Internal
     public static Map<String, Boolean> toolbeltConfiguration = new HashMap<>();
 
     /**
@@ -141,7 +144,18 @@ public class IrisToolbelt {
      * @return the pregenerator job (already started)
      */
     public static PregeneratorJob pregenerate(PregenTask task, PregeneratorMethod method, Engine engine) {
-        return new PregeneratorJob(task, method, engine);
+        return pregenerate(task, method, engine, IrisSettings.get().getPregen().useCacheByDefault);
+    }
+
+    /**
+     * Start a pregenerator task
+     *
+     * @param task   the scheduled task
+     * @param method the method to execute the task
+     * @return the pregenerator job (already started)
+     */
+    public static PregeneratorJob pregenerate(PregenTask task, PregeneratorMethod method, Engine engine, boolean cached) {
+        return new PregeneratorJob(task, cached && engine != null ? new CachedPregenMethod(method, engine.getWorld().name()) : method, engine);
     }
 
     /**
@@ -220,7 +234,11 @@ public class IrisToolbelt {
     }
 
     public static void retainMantleDataForSlice(String className) {
-        toolbeltConfiguration.put("retain.mantle." + className, true);
+        toolbeltConfiguration.put("retain.mantle." + className, Boolean.TRUE);
+    }
+
+    public static boolean isRetainingMantleDataForSlice(String className) {
+        return !toolbeltConfiguration.isEmpty() && toolbeltConfiguration.get("retain.mantle." + className) == Boolean.TRUE;
     }
 
     public static <T> T getMantleData(World world, int x, int y, int z, Class<T> of) {

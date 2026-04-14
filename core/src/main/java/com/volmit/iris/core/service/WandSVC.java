@@ -33,8 +33,9 @@ import com.volmit.iris.util.matter.WorldMatter;
 import com.volmit.iris.util.plugin.IrisService;
 import com.volmit.iris.util.plugin.VolmitSender;
 import com.volmit.iris.util.scheduling.J;
+import com.volmit.iris.util.scheduling.SR;
+import com.volmit.iris.util.scheduling.jobs.Job;
 import org.bukkit.*;
-import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -50,10 +51,18 @@ import org.bukkit.util.Vector;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+
+import static com.volmit.iris.util.data.registry.Particles.CRIT_MAGIC;
+import static com.volmit.iris.util.data.registry.Particles.REDSTONE;
 
 public class WandSVC implements IrisService {
+    private static final int MS_PER_TICK = Integer.parseInt(System.getProperty("iris.ms_per_tick", "30"));
+
     private static ItemStack dust;
+    private static ItemStack wand;
 
     public static void pasteSchematic(IrisObject s, Location at) {
         s.place(at);
@@ -65,23 +74,94 @@ public class WandSVC implements IrisService {
      * @param p The wand player
      * @return The new object
      */
-    public static IrisObject createSchematic(Player p) {
+    public static IrisObject createSchematic(Player p, boolean legacy) {
         if (!isHoldingWand(p)) {
             return null;
         }
 
         try {
             Location[] f = getCuboid(p);
+            if (f == null || f[0] == null || f[1] == null)
+                return null;
             Cuboid c = new Cuboid(f[0], f[1]);
             IrisObject s = new IrisObject(c.getSizeX(), c.getSizeY(), c.getSizeZ());
-            for (Block b : c) {
-                if (b.getType().equals(Material.AIR)) {
-                    continue;
+
+            var it = c.chunkedIterator();
+
+            int total = c.getSizeX() * c.getSizeY() * c.getSizeZ();
+            var latch = new CountDownLatch(1);
+            var holder = Iris.tickets.getHolder(p.getWorld());
+            new Job() {
+                private int i;
+                private Chunk chunk;
+
+                @Override
+                public String getName() {
+                    return "Scanning Selection";
                 }
 
-                BlockVector bv = b.getLocation().subtract(c.getLowerNE().toVector()).toVector().toBlockVector();
-                s.setUnsigned(bv.getBlockX(), bv.getBlockY(), bv.getBlockZ(), b);
-            }
+                @Override
+                public void execute() {
+                    new SR() {
+                        @Override
+                        public void run() {
+                            var time = M.ms() + MS_PER_TICK;
+                            while (time > M.ms()) {
+                                if (!it.hasNext()) {
+                                    if (chunk != null) {
+                                        holder.removeTicket(chunk);
+                                        chunk = null;
+                                    }
+
+                                    cancel();
+                                    latch.countDown();
+                                    return;
+                                }
+
+                                try {
+                                    var b = it.next();
+                                    var bChunk = b.getChunk();
+                                    if (chunk == null) {
+                                        chunk = bChunk;
+                                        holder.addTicket(chunk);
+                                    } else if (chunk != bChunk) {
+                                        holder.removeTicket(chunk);
+                                        holder.addTicket(bChunk);
+                                        chunk = bChunk;
+                                    }
+
+                                    if (b.getType().equals(Material.AIR))
+                                        continue;
+
+                                    BlockVector bv = b.getLocation().subtract(c.getLowerNE().toVector()).toVector().toBlockVector();
+                                    s.setUnsigned(bv.getBlockX(), bv.getBlockY(), bv.getBlockZ(), b, legacy);
+                                } finally {
+                                    i++;
+                                }
+                            }
+                        }
+                    };
+                    try {
+                        latch.await();
+                    } catch (InterruptedException ignored) {}
+                }
+
+                @Override
+                public void completeWork() {}
+
+                @Override
+                public int getTotalWork() {
+                    return total;
+                }
+
+                @Override
+                public int getWorkCompleted() {
+                    return i;
+                }
+            }.execute(new VolmitSender(p), true, () -> {});
+            try {
+                latch.await();
+            } catch (InterruptedException ignored) {}
 
             return s;
         } catch (Throwable e) {
@@ -123,7 +203,9 @@ public class WandSVC implements IrisService {
     public static Location stringToLocation(String s) {
         try {
             String[] f = s.split("\\Q in \\E");
+            if (f.length != 2) return null;
             String[] g = f[0].split("\\Q,\\E");
+            if (g.length != 3) return null;
             return new Location(Bukkit.getWorld(f[1]), Integer.parseInt(g[0]), Integer.parseInt(g[1]), Integer.parseInt(g[2]));
         } catch (Throwable e) {
             Iris.reportError(e);
@@ -161,11 +243,11 @@ public class WandSVC implements IrisService {
      */
     public static ItemStack createDust() {
         ItemStack is = new ItemStack(Material.GLOWSTONE_DUST);
-        is.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        is.addUnsafeEnchantment(Enchantment.FIRE_ASPECT, 1);
         ItemMeta im = is.getItemMeta();
         im.setDisplayName(C.BOLD + "" + C.YELLOW + "Dust of Revealing");
         im.setUnbreakable(true);
-        im.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_PLACED_ON, ItemFlag.HIDE_POTION_EFFECTS, ItemFlag.HIDE_DESTROYS, ItemFlag.HIDE_ENCHANTS);
+        im.addItemFlags(ItemFlag.values());
         im.setLore(new KList<String>().qadd("Right click on a block to reveal it's placement structure!"));
         is.setItemMeta(im);
 
@@ -205,11 +287,11 @@ public class WandSVC implements IrisService {
      */
     public static ItemStack createWand(Location a, Location b) {
         ItemStack is = new ItemStack(Material.BLAZE_ROD);
-        is.addUnsafeEnchantment(Enchantment.ARROW_INFINITE, 1);
+        is.addUnsafeEnchantment(Enchantment.FIRE_ASPECT, 1);
         ItemMeta im = is.getItemMeta();
         im.setDisplayName(C.BOLD + "" + C.GOLD + "Wand of Iris");
         im.setUnbreakable(true);
-        im.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_PLACED_ON, ItemFlag.HIDE_POTION_EFFECTS, ItemFlag.HIDE_DESTROYS, ItemFlag.HIDE_ENCHANTS);
+        im.addItemFlags(ItemFlag.values());
         im.setLore(new KList<String>().add(locationToString(a), locationToString(b)));
         is.setItemMeta(im);
 
@@ -226,17 +308,19 @@ public class WandSVC implements IrisService {
             return getCuboidFromItem(p.getInventory().getItemInMainHand());
         }
 
-        Cuboid c = WorldEditLink.getSelection(p);
+        if (IrisSettings.get().getWorld().worldEditWandCUI) {
+            Cuboid c = WorldEditLink.getSelection(p);
 
-        if (c != null) {
-            return new Location[]{c.getLowerNE(), c.getUpperSW()};
+            if (c != null) {
+                return new Location[]{c.getLowerNE(), c.getUpperSW()};
+            }
         }
 
         return null;
     }
 
     public static boolean isHoldingWand(Player p) {
-        return isHoldingIrisWand(p) || WorldEditLink.getSelection(p) != null;
+        return isHoldingIrisWand(p) || (IrisSettings.get().getWorld().worldEditWandCUI && WorldEditLink.getSelection(p) != null);
     }
 
     public static boolean isHoldingIrisWand(Player p) {
@@ -251,7 +335,6 @@ public class WandSVC implements IrisService {
      * @return True if it is
      */
     public static boolean isWand(ItemStack is) {
-        ItemStack wand = createWand();
         if (is.getItemMeta() == null) return false;
         return is.getType().equals(wand.getType()) &&
                 is.getItemMeta().getDisplayName().equals(wand.getItemMeta().getDisplayName()) &&
@@ -261,7 +344,7 @@ public class WandSVC implements IrisService {
 
     @Override
     public void onEnable() {
-        ItemStack wand = createWand();
+        wand = createWand();
         dust = createDust();
 
         J.ar(() -> {
@@ -281,6 +364,7 @@ public class WandSVC implements IrisService {
             try {
                 if ((IrisSettings.get().getWorld().worldEditWandCUI && isHoldingWand(p)) || isWand(p.getInventory().getItemInMainHand())) {
                     Location[] d = getCuboid(p);
+                    if (d == null || d[0] == null || d[1] == null) return;
                     new WandSelection(new Cuboid(d[0], d[1]), p).draw();
                 }
             } catch (Throwable e) {
@@ -309,9 +393,9 @@ public class WandSVC implements IrisService {
      */
     public void draw(Location[] d, Player p) {
         Vector gx = Vector.getRandom().subtract(Vector.getRandom()).normalize().clone().multiply(0.65);
-        d[0].getWorld().spawnParticle(Particle.CRIT_MAGIC, d[0], 1, 0.5 + gx.getX(), 0.5 + gx.getY(), 0.5 + gx.getZ(), 0, null, false);
+        d[0].getWorld().spawnParticle(CRIT_MAGIC, d[0], 1, 0.5 + gx.getX(), 0.5 + gx.getY(), 0.5 + gx.getZ(), 0, null, false);
         Vector gxx = Vector.getRandom().subtract(Vector.getRandom()).normalize().clone().multiply(0.65);
-        d[1].getWorld().spawnParticle(Particle.CRIT, d[1], 1, 0.5 + gxx.getX(), 0.5 + gxx.getY(), 0.5 + gxx.getZ(), 0, null, false);
+        d[1].getWorld().spawnParticle(CRIT_MAGIC, d[1], 1, 0.5 + gxx.getX(), 0.5 + gxx.getY(), 0.5 + gxx.getZ(), 0, null, false);
 
         if (!d[0].getWorld().equals(d[1].getWorld())) {
             return;
@@ -368,7 +452,7 @@ public class WandSVC implements IrisService {
                             int r = color.getRed();
                             int g = color.getGreen();
                             int b = color.getBlue();
-                            p.spawnParticle(Particle.REDSTONE, lv.getX(), lv.getY(), lv.getZ(), 1, 0, 0, 0, 0, new Particle.DustOptions(org.bukkit.Color.fromRGB(r, g, b), 0.75f));
+                            p.spawnParticle(REDSTONE, lv.getX(), lv.getY(), lv.getZ(), 1, 0, 0, 0, 0, new Particle.DustOptions(org.bukkit.Color.fromRGB(r, g, b), 0.75f));
                         }
                     }
                 }
@@ -381,7 +465,7 @@ public class WandSVC implements IrisService {
         if (e.getHand() != EquipmentSlot.HAND)
             return;
         try {
-            if (isHoldingWand(e.getPlayer())) {
+            if (isHoldingIrisWand(e.getPlayer())) {
                 if (e.getAction().equals(Action.LEFT_CLICK_BLOCK)) {
                     e.setCancelled(true);
                     e.getPlayer().getInventory().setItemInMainHand(update(true, Objects.requireNonNull(e.getClickedBlock()).getLocation(), e.getPlayer().getInventory().getItemInMainHand()));

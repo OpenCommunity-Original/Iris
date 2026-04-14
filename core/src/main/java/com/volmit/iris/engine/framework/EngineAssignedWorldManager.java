@@ -34,6 +34,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -98,51 +99,6 @@ public abstract class EngineAssignedWorldManager extends EngineAssignedComponent
     }
 
     @EventHandler
-    public void onItemUse(PlayerInteractEvent e) {
-        if (e.getItem() == null || e.getHand() != EquipmentSlot.HAND) {
-            return;
-        }
-        if (e.getAction() == Action.LEFT_CLICK_BLOCK || e.getAction() == Action.LEFT_CLICK_AIR) {
-            return;
-        }
-        if (e.getPlayer().getWorld().equals(getTarget().getWorld().realWorld()) && e.getItem().getType() == Material.ENDER_EYE) {
-            if (e.getClickedBlock() != null && e.getClickedBlock().getType() == Material.END_PORTAL_FRAME) {
-                return;
-            }
-
-            KList<Position2> positions = getEngine().getDimension().getStrongholds(getEngine().getSeedManager().getSpawn());
-            if (positions.isEmpty()) {
-                return;
-            }
-
-            Position2 playerPos = new Position2(e.getPlayer().getLocation().getBlockX(), e.getPlayer().getLocation().getBlockZ());
-            Position2 pr = positions.get(0);
-            double d = pr.distance(playerPos);
-
-            for (Position2 pos : positions) {
-                double distance = pos.distance(playerPos);
-                if (distance < d) {
-                    d = distance;
-                    pr = pos;
-                }
-            }
-
-            if (e.getPlayer().getGameMode() != GameMode.CREATIVE) {
-                if (e.getItem().getAmount() > 1) {
-                    e.getPlayer().getInventory().getItemInMainHand().setAmount(e.getItem().getAmount() - 1);
-                } else {
-                    e.getPlayer().getInventory().setItemInMainHand(null);
-                }
-            }
-
-            EnderSignal eye = e.getPlayer().getWorld().spawn(e.getPlayer().getLocation().clone().add(0, 0.5F, 0), EnderSignal.class);
-            eye.setTargetLocation(new Location(e.getPlayer().getWorld(), pr.getX(), 40, pr.getZ()));
-            eye.getWorld().playSound(eye, Sound.ENTITY_ENDER_EYE_LAUNCH, 1, 1);
-            Iris.debug("ESignal: " + eye.getTargetLocation().getBlockX() + " " + eye.getTargetLocation().getBlockX());
-        }
-    }
-
-    @EventHandler
     public void on(WorldUnloadEvent e) {
         if (e.getWorld().equals(getTarget().getWorld().realWorld())) {
             getEngine().close();
@@ -167,6 +123,13 @@ public abstract class EngineAssignedWorldManager extends EngineAssignedComponent
     public void on(ChunkLoadEvent e) {
         if (e.getChunk().getWorld().equals(getTarget().getWorld().realWorld())) {
             onChunkLoad(e.getChunk(), e.isNewChunk());
+        }
+    }
+
+    @EventHandler
+    public void on(ChunkUnloadEvent e) {
+        if (e.getChunk().getWorld().equals(getTarget().getWorld().realWorld())) {
+            onChunkUnload(e.getChunk());
         }
     }
 

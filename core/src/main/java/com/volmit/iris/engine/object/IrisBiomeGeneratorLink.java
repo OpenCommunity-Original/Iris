@@ -22,9 +22,7 @@ import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.data.DataProvider;
 import com.volmit.iris.util.interpolation.IrisInterpolation;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.Accessors;
 
 @Snippet("generator-layer")
@@ -53,8 +51,7 @@ public class IrisBiomeGeneratorLink {
     private int max = 0;
 
     public IrisGenerator getCachedGenerator(DataProvider g) {
-        return gen.aquire(() ->
-        {
+        return gen.aquire(() -> {
             IrisGenerator gen = g.getData().getGeneratorLoader().load(getGenerator());
 
             if (gen == null) {

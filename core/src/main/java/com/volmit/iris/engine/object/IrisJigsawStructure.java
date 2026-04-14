@@ -22,6 +22,8 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.engine.data.cache.AtomicCache;
 import com.volmit.iris.engine.object.annotations.*;
+import com.volmit.iris.engine.object.annotations.functions.StructureKeyFunction;
+import com.volmit.iris.engine.object.annotations.functions.StructureKeyOrTagFunction;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.json.JSONObject;
 import com.volmit.iris.util.plugin.VolmitSender;
@@ -39,6 +41,11 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 public class IrisJigsawStructure extends IrisRegistrant {
+    @RegistryListFunction(StructureKeyFunction.class)
+    @ArrayType(min = 1, type = String.class)
+    @Desc("The datapack structures. Randomply chooses a structure to place\nIgnores every other setting")
+    private KList<String> datapackStructures = new KList<>();
+
     @RegistryListResource(IrisJigsawPiece.class)
     @Required
     @ArrayType(min = 1, type = String.class)
@@ -56,6 +63,10 @@ public class IrisJigsawStructure extends IrisRegistrant {
     @Desc("If set to true, iris will look for any pieces with only one connector in valid pools for edge connectors and attach them to 'terminate' the paths/piece connectors. Essentially it caps off ends. For example in a village, Iris would add houses to the ends of roads where possible. For terminators to be selected, they can only have one connector or they wont be chosen.")
     private boolean terminate = true;
 
+    @RegistryListResource(IrisJigsawPool.class)
+    @Desc("The pool to use when terminating pieces")
+    private String terminatePool = null;
+
     @Desc("Override the y range instead of placing on the height map")
     private IrisStyledRange overrideYRange = null;
 
@@ -64,6 +75,13 @@ public class IrisJigsawStructure extends IrisRegistrant {
 
     @Desc("Set to true to prevent rotating the initial structure piece")
     private boolean disableInitialRotation = false;
+
+    @RegistryListFunction(StructureKeyOrTagFunction.class)
+    @Desc("The minecraft key to use when creating treasure maps")
+    private String structureKey = null;
+
+    @Desc("Force Place the whole structure")
+    private boolean forcePlace = false;
 
     private transient AtomicCache<Integer> maxDimension = new AtomicCache<>();
 
@@ -105,6 +123,10 @@ public class IrisJigsawStructure extends IrisRegistrant {
 
     public int getMaxDimension() {
         return maxDimension.aquire(() -> {
+            if (datapackStructures.isNotEmpty()) {
+                return 0;
+            }
+
             if (useMaxPieceSizeForParallaxRadius) {
                 int max = 0;
                 KList<String> pools = new KList<>();
@@ -127,13 +149,21 @@ public class IrisJigsawStructure extends IrisRegistrant {
                     loadPiece(i, pools, pieces);
                 }
 
+                if (pieces.isEmpty()) {
+                    int max = 0;
+                    for (String i : getPieces()) {
+                        max = Math.max(max, getLoader().getJigsawPieceLoader().load(i).getMax2dDimension());
+                    }
+                    return max;
+                }
+
                 int avg = 0;
 
                 for (String i : pieces) {
                     avg += getLoader().getJigsawPieceLoader().load(i).getMax2dDimension();
                 }
 
-                return (avg / (pieces.size() > 0 ? pieces.size() : 1)) * (((getMaxDepth() + 1) * 2) + 1);
+                return (avg / (!pieces.isEmpty() ? pieces.size() : 1)) * (((getMaxDepth() + 1) * 2) + 1);
             }
         });
     }

@@ -20,7 +20,10 @@ package com.volmit.iris.engine.object;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.core.link.Identifier;
 import com.volmit.iris.core.loader.IrisRegistrant;
+import com.volmit.iris.core.nms.INMS;
+import com.volmit.iris.core.service.ExternalDataSVC;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.object.annotations.*;
 import com.volmit.iris.util.collection.KList;
@@ -41,6 +44,7 @@ import org.bukkit.*;
 import org.bukkit.attribute.Attributable;
 import org.bukkit.entity.*;
 import org.bukkit.entity.Panda.Gene;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.loot.LootContext;
@@ -54,6 +58,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.volmit.iris.util.data.registry.Particles.ITEM;
+
 @SuppressWarnings("ALL")
 @Accessors(chain = true)
 @NoArgsConstructor
@@ -66,6 +72,9 @@ public class IrisEntity extends IrisRegistrant {
     @Required
     @Desc("The type of entity to spawn. To spawn a mythic mob, set this type to unknown and define mythic type.")
     private EntityType type = EntityType.UNKNOWN;
+
+    @Desc("The SpawnReason to spawn the entity with.")
+    private CreatureSpawnEvent.SpawnReason reason = CreatureSpawnEvent.SpawnReason.NATURAL;
 
     @Desc("The custom name of this entity")
     private String customName = "";
@@ -157,12 +166,12 @@ public class IrisEntity extends IrisRegistrant {
     @Desc("Set to true if you want to apply all of the settings here to the mob, even though an external plugin has already done so. Scripts are always applied.")
     private boolean applySettingsToCustomMobAnyways = false;
 
-    @Desc("Set the entity type to UNKNOWN, then define a script here which ends with the entity variable (the result). You can use Iris.getLocation() to find the target location. You can spawn any entity this way.")
+    @Desc("Set the entity type to UNKNOWN, then define a script here which ends with the entity variable (the result). You can use location to find the target location. You can spawn any entity this way.\nFile extension: .spawn.kts")
     @RegistryListResource(IrisScript.class)
     private String spawnerScript = "";
 
     @ArrayType(min = 1, type = String.class)
-    @Desc("Set the entity type to UNKNOWN, then define a script here. You can use Iris.getLocation() to find the target location. You can spawn any entity this way.")
+    @Desc("Executed post spawn you can modify the entity however you want with it\nFile extension: .postspawn.kts")
     @RegistryListResource(IrisScript.class)
     private KList<String> postSpawnScripts = new KList<>();
 
@@ -204,9 +213,8 @@ public class IrisEntity extends IrisRegistrant {
 
         if (!spawnerScript.isEmpty() && ee == null) {
             synchronized (this) {
-                gen.getExecution().getAPI().setLocation(at);
                 try {
-                    ee = (Entity) gen.getExecution().evaluate(spawnerScript);
+                    ee = (Entity) gen.getExecution().spawnMob(spawnerScript, at);
                 } catch (Throwable ex) {
                     Iris.error("You must return an Entity in your scripts to use entity scripts!");
                     ex.printStackTrace();
@@ -264,7 +272,7 @@ public class IrisEntity extends IrisRegistrant {
 
                         for (String fi : getLoot().getTables()) {
                             IrisLootTable i = gen.getData().getLootLoader().load(fi);
-                            items.addAll(i.getLoot(gen.isStudio(), rng.nextParallelRNG(345911), InventorySlotType.STORAGE, finalAt.getBlockX(), finalAt.getBlockY(), finalAt.getBlockZ()));
+                            items.addAll(i.getLoot(gen.isStudio(), rng.nextParallelRNG(345911), InventorySlotType.STORAGE, finalAt.getWorld(), finalAt.getBlockX(), finalAt.getBlockY(), finalAt.getBlockZ()));
                         }
 
                         return items;
@@ -346,11 +354,8 @@ public class IrisEntity extends IrisRegistrant {
 
         if (postSpawnScripts.isNotEmpty()) {
             synchronized (this) {
-                gen.getExecution().getAPI().setLocation(at);
-                gen.getExecution().getAPI().setEntity(ee);
-
                 for (String i : postSpawnScripts) {
-                    gen.getExecution().execute(i);
+                    gen.getExecution().postSpawnMob(i, at, ee);
                 }
             }
         }
@@ -381,7 +386,7 @@ public class IrisEntity extends IrisRegistrant {
                     if (e.getLocation().getBlock().getType().isSolid() || ((LivingEntity) e).getEyeLocation().getBlock().getType().isSolid()) {
                         e.teleport(start.add(new Vector(0, 0.1, 0)));
                         ItemStack itemCrackData = new ItemStack(((LivingEntity) e).getEyeLocation().clone().subtract(0, 2, 0).getBlock().getBlockData().getMaterial());
-                        e.getWorld().spawnParticle(Particle.ITEM_CRACK, ((LivingEntity) e).getEyeLocation(), 6, 0.2, 0.4, 0.2, 0.06f, itemCrackData);
+                        e.getWorld().spawnParticle(ITEM, ((LivingEntity) e).getEyeLocation(), 6, 0.2, 0.4, 0.2, 0.06f, itemCrackData);
                         if (M.r(0.2)) {
                             e.getWorld().playSound(e.getLocation(), Sound.BLOCK_CHORUS_FLOWER_GROW, 0.8f, 0.1f);
                         }
@@ -448,22 +453,11 @@ public class IrisEntity extends IrisRegistrant {
         }
 
         if (isSpecialType()) {
-            if (specialType.toLowerCase().startsWith("mythicmobs:")) {
-                return Iris.linkMythicMobs.spawnMob(specialType.substring(11), at);
-            } else {
-                Iris.warn("Invalid mob type to spawn: '" + specialType + "'!");
-                return null;
-            }
+            return Iris.service(ExternalDataSVC.class).spawnMob(at, Identifier.fromString(specialType));
         }
 
 
-        return at.getWorld().spawnEntity(at, getType());
-    }
-
-    public boolean isCitizens() {
-        return false;
-
-        // TODO: return Iris.linkCitizens.supported() && someType is not empty;
+        return INMS.get().spawnEntity(at, getType(), getReason());
     }
 
     public boolean isSpecialType() {

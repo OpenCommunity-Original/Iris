@@ -122,6 +122,10 @@ public class IrisCompat {
     private static KList<IrisCompatabilityBlockFilter> getDefaultBlockCompatabilityFilters() {
         KList<IrisCompatabilityBlockFilter> filters = new KList<>();
 
+        filters.add(new IrisCompatabilityBlockFilter("CHAIN", "IRON_CHAIN"));
+        filters.add(new IrisCompatabilityBlockFilter("GRASS", "SHORT_GRASS"));
+        filters.add(new IrisCompatabilityBlockFilter("SHORT_GRASS", "GRASS"));
+
         // Below 1.16
         filters.add(new IrisCompatabilityBlockFilter("WEEPING_VINES", "NETHER_FENCE"));
         filters.add(new IrisCompatabilityBlockFilter("WEEPING_VINES_PLANT", "NETHER_FENCE"));
@@ -160,7 +164,7 @@ public class IrisCompat {
         filters.add(new IrisCompatabilityBlockFilter("CRACKED_NETHER_BRICKS", "NETHER_BRICKS"));
         filters.add(new IrisCompatabilityBlockFilter("CHISELED_NETHER_BRICKS", "NETHER_BRICKS"));
         filters.add(new IrisCompatabilityBlockFilter("NETHER_FENCE", "LEGACY_NETHER_FENCE"));
-        filters.add(new IrisCompatabilityBlockFilter("CHAIN", "IRON_BARS"));
+        filters.add(new IrisCompatabilityBlockFilter("IRON_CHAIN", "IRON_BARS"));
         filters.add(new IrisCompatabilityBlockFilter("NETHERITE_BLOCK", "QUARTZ_BLOCK"));
         filters.add(new IrisCompatabilityBlockFilter("BLACKSTONE", "COBBLESTONE"));
         filters.add(new IrisCompatabilityBlockFilter("BASALT", "STONE"));
@@ -234,7 +238,7 @@ public class IrisCompat {
         filters.add(new IrisCompatabilityBlockFilter("ACACIA_WALL_SIGN", "LEGACY_WALL_SIGN"));
         filters.add(new IrisCompatabilityBlockFilter("ACACIA_SIGN", "LEGACY_SIGN_POST"));
         filters.add(new IrisCompatabilityBlockFilter("SCAFFOLDING", "BIRCH_FENCE"));
-        filters.add(new IrisCompatabilityBlockFilter("LOOM", "LOOM"));
+        //filters.add(new IrisCompatabilityBlockFilter("LOOM", "LOOM"));
         filters.add(new IrisCompatabilityBlockFilter("LECTERN", "BOOKSHELF"));
         filters.add(new IrisCompatabilityBlockFilter("LANTERN", "REDSTONE_LAMP"));
         filters.add(new IrisCompatabilityBlockFilter("JIGSAW", "AIR"));
@@ -262,7 +266,7 @@ public class IrisCompat {
         String buf = n;
         int err = 16;
 
-        BlockData tx = B.getOrNull(buf);
+        BlockData tx = B.getOrNull(buf, false);
 
         if (tx != null) {
             return tx;
@@ -271,11 +275,19 @@ public class IrisCompat {
         searching:
         while (true) {
             if (err-- <= 0) {
-                return B.get("STONE");
+                Iris.error("Can't find block data for " + n);
+                return B.getNoCompat("STONE");
+            }
+            String m = buf;
+            if (m.contains("[")) {
+                m = m.split("\\Q[\\E")[0];
+            }
+            if (m.contains(":")) {
+                m = m.split("\\Q:\\E", 2)[1];
             }
 
             for (IrisCompatabilityBlockFilter i : blockFilters) {
-                if (i.getWhen().equalsIgnoreCase(buf)) {
+                if (i.getWhen().equalsIgnoreCase(i.isExact() ? buf : m)) {
                     BlockData b = i.getReplace();
 
                     if (b != null) {
@@ -287,7 +299,8 @@ public class IrisCompat {
                 }
             }
 
-            return B.get("STONE");
+            Iris.error("Can't find block data for " + n);
+            return B.getNoCompat("STONE");
         }
     }
 
@@ -330,7 +343,7 @@ public class IrisCompat {
         }
 
         buf = n;
-        BlockData tx = B.getOrNull(buf);
+        BlockData tx = B.getOrNull(buf, false);
 
         if (tx != null) {
             return tx.getMaterial();

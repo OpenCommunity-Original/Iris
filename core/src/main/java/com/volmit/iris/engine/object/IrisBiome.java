@@ -143,14 +143,14 @@ public class IrisBiome extends IrisRegistrant implements IRare {
     @Desc("The default wall if iris decides to place a wall higher than 2 blocks (steep hills or possibly cliffs)")
     private IrisBiomePaletteLayer wall = new IrisBiomePaletteLayer().zero();
     @Required
-    @ArrayType(min = 1, type = IrisBiomePaletteLayer.class)
+    @ArrayType(type = IrisBiomePaletteLayer.class)
     @Desc("This defines the layers of materials in this biome. Each layer has a palette and min/max height and some other properties. Usually a grassy/sandy layer then a dirt layer then a stone layer. Iris will fill in the remaining blocks below your layers with stone.")
     private KList<IrisBiomePaletteLayer> layers = new KList<IrisBiomePaletteLayer>().qadd(new IrisBiomePaletteLayer());
     @Required
-    @ArrayType(min = 1, type = IrisBiomePaletteLayer.class)
+    @ArrayType(type = IrisBiomePaletteLayer.class)
     @Desc("This defines the layers of materials in this biome. Each layer has a palette and min/max height and some other properties. Usually a grassy/sandy layer then a dirt layer then a stone layer. Iris will fill in the remaining blocks below your layers with stone.")
     private KList<IrisBiomePaletteLayer> caveCeilingLayers = new KList<IrisBiomePaletteLayer>().qadd(new IrisBiomePaletteLayer());
-    @ArrayType(min = 1, type = IrisBiomePaletteLayer.class)
+    @ArrayType(type = IrisBiomePaletteLayer.class)
     @Desc("This defines the layers of materials in this biome. Each layer has a palette and min/max height and some other properties. Usually a grassy/sandy layer then a dirt layer then a stone layer. Iris will fill in the remaining blocks below your layers with stone.")
     private KList<IrisBiomePaletteLayer> seaLayers = new KList<>();
     @ArrayType(min = 1, type = IrisDecorator.class)
@@ -171,12 +171,14 @@ public class IrisBiome extends IrisRegistrant implements IRare {
     @ArrayType(type = IrisOreGenerator.class, min = 1)
     private KList<IrisOreGenerator> ores = new KList<>();
 
-    public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data) {
+    public BlockData generateOres(int x, int y, int z, RNG rng, IrisData data, boolean surface) {
         if (ores.isEmpty()) {
             return null;
         }
         BlockData b = null;
         for (IrisOreGenerator i : ores) {
+            if (i.isGenerateSurface() != surface)
+                continue;
 
             b = i.generate(x, y, z, rng, data);
             if (b != null) {
@@ -194,13 +196,14 @@ public class IrisBiome extends IrisRegistrant implements IRare {
         return getCustomDerivitives() != null && getCustomDerivitives().isNotEmpty();
     }
 
-    public double getGenLinkMax(String loadKey) {
+    public double getGenLinkMax(String loadKey, Engine engine) {
         Integer v = genCacheMax.aquire(() ->
         {
             KMap<String, Integer> l = new KMap<>();
 
             for (IrisBiomeGeneratorLink i : getGenerators()) {
                 l.put(i.getGenerator(), i.getMax());
+
             }
 
             return l;
@@ -209,7 +212,7 @@ public class IrisBiome extends IrisRegistrant implements IRare {
         return v == null ? 0 : v;
     }
 
-    public double getGenLinkMin(String loadKey) {
+    public double getGenLinkMin(String loadKey, Engine engine) {
         Integer v = genCacheMin.aquire(() ->
         {
             KMap<String, Integer> l = new KMap<>();
@@ -450,7 +453,7 @@ public class IrisBiome extends IrisRegistrant implements IRare {
         return real;
     }
 
-    public int getMaxHeight() {
+    public int getMaxHeight(Engine engine) {
         return maxHeight.aquire(() ->
         {
             int maxHeight = 0;
@@ -463,7 +466,7 @@ public class IrisBiome extends IrisRegistrant implements IRare {
         });
     }
 
-    public int getMaxWithObjectHeight(IrisData data) {
+    public int getMaxWithObjectHeight(IrisData data, Engine engine) {
         return maxWithObjectHeight.aquire(() ->
         {
             int maxHeight = 0;

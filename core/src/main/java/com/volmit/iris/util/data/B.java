@@ -21,9 +21,13 @@ package com.volmit.iris.util.data;
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.link.Identifier;
+import com.volmit.iris.core.link.data.DataType;
+import com.volmit.iris.core.nms.INMS;
+import com.volmit.iris.core.nms.container.BlockProperty;
 import com.volmit.iris.core.service.ExternalDataSVC;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
+import com.volmit.iris.util.data.registry.Materials;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import it.unimi.dsi.fastutil.ints.*;
 import org.bukkit.Bukkit;
@@ -33,10 +37,7 @@ import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Leaves;
 import org.bukkit.block.data.type.PointedDripstone;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.bukkit.Material.*;
@@ -45,6 +46,7 @@ public class B {
     private static final KMap<String, BlockData> custom = new KMap<>();
 
     private static final Material AIR_MATERIAL = Material.AIR;
+    private static final Material SHORT_GRASS = Materials.GRASS;
     private static final BlockData AIR = AIR_MATERIAL.createBlockData();
     private static final IntSet foliageCache = buildFoliageCache();
     private static final IntSet deepslateCache = buildDeepslateCache();
@@ -84,7 +86,7 @@ public class B {
                 WHITE_TULIP,
                 FERN,
                 LARGE_FERN,
-                GRASS,
+                SHORT_GRASS,
                 TALL_GRASS
         }).forEach((i) -> b.add(i.ordinal()));
 
@@ -103,7 +105,15 @@ public class B {
                 DEEPSLATE_TILES,
                 DEEPSLATE_TILE_STAIRS,
                 DEEPSLATE_TILE_WALL,
-                CRACKED_DEEPSLATE_TILES
+                CRACKED_DEEPSLATE_TILES,
+                DEEPSLATE_COAL_ORE,
+                DEEPSLATE_IRON_ORE,
+                DEEPSLATE_COPPER_ORE,
+                DEEPSLATE_DIAMOND_ORE,
+                DEEPSLATE_EMERALD_ORE,
+                DEEPSLATE_GOLD_ORE,
+                DEEPSLATE_LAPIS_ORE,
+                DEEPSLATE_REDSTONE_ORE,
         }).forEach((i) -> b.add(i.ordinal()));
 
         return IntSets.unmodifiable(b);
@@ -142,8 +152,9 @@ public class B {
     private static IntSet buildDecorantCache() {
         IntSet b = new IntOpenHashSet();
         Arrays.stream(new Material[]{
-                GRASS,
+                SHORT_GRASS,
                 TALL_GRASS,
+                TALL_SEAGRASS,
                 FERN,
                 LARGE_FERN,
                 CORNFLOWER,
@@ -349,6 +360,7 @@ public class B {
 
     public static boolean isFoliagePlantable(BlockData d) {
         return d.getMaterial().equals(Material.GRASS_BLOCK)
+                || d.getMaterial().equals(Material.MOSS_BLOCK)
                 || d.getMaterial().equals(Material.ROOTED_DIRT)
                 || d.getMaterial().equals(Material.DIRT)
                 || d.getMaterial().equals(Material.COARSE_DIRT)
@@ -357,6 +369,7 @@ public class B {
 
     public static boolean isFoliagePlantable(Material d) {
         return d.equals(Material.GRASS_BLOCK)
+                || d.equals(Material.MOSS_BLOCK)
                 || d.equals(Material.DIRT)
                 || d.equals(TALL_GRASS)
                 || d.equals(TALL_SEAGRASS)
@@ -406,7 +419,7 @@ public class B {
         return mat.getMaterial().isSolid();
     }
 
-    public static BlockData getOrNull(String bdxf) {
+    public static BlockData getOrNull(String bdxf, boolean warn) {
         try {
             String bd = bdxf.trim();
 
@@ -422,9 +435,9 @@ public class B {
                 return DIRT_PATH.createBlockData();
             }
 
-            BlockData bdx = parseBlockData(bd);
+            BlockData bdx = parseBlockData(bd, warn);
 
-            if (bdx == null) {
+            if (bdx == null && warn) {
                 if (clw.flip()) {
                     Iris.warn("Unknown Block Data '" + bd + "'");
                 }
@@ -443,8 +456,8 @@ public class B {
         return null;
     }
 
-    public static BlockData get(String bdxf) {
-        BlockData bd = getOrNull(bdxf);
+    public static BlockData getNoCompat(String bdxf) {
+        BlockData bd = getOrNull(bdxf, true);
 
         if (bd != null) {
             return bd;
@@ -453,34 +466,48 @@ public class B {
         return AIR;
     }
 
-    private static synchronized BlockData createBlockData(String s) {
+    public static BlockData get(String bdxf) {
+        if (bdxf.contains(":")) {
+            if (bdxf.startsWith("minecraft:")) {
+                return Iris.compat.getBlock(bdxf);
+            } else {
+                return getNoCompat(bdxf);
+            }
+        } else {
+            return Iris.compat.getBlock(bdxf);
+        }
+    }
+
+    private static synchronized BlockData createBlockData(String s, boolean warn) {
         try {
             return Bukkit.createBlockData(s);
         } catch (IllegalArgumentException e) {
             if (s.contains("[")) {
-                return createBlockData(s.split("\\Q[\\E")[0]);
+                return createBlockData(s.split("\\Q[\\E")[0], warn);
             }
         }
 
-        Iris.error("Can't find block data for " + s);
+        if (warn) {
+            Iris.error("Can't find block data for " + s);
+        }
         return null;
     }
 
-    private static BlockData parseBlockData(String ix) {
+    private static BlockData parseBlockData(String ix, boolean warn) {
         try {
             BlockData bx = null;
 
             if (!ix.startsWith("minecraft:") && ix.contains(":")) {
                 Identifier key = Identifier.fromString(ix);
                 Optional<BlockData> bd = Iris.service(ExternalDataSVC.class).getBlockData(key);
-                Iris.info("Loading block data " + key);
+                Iris.debug("Loading block data " + key);
                 if (bd.isPresent())
                     bx = bd.get();
             }
 
             if (bx == null) {
                 try {
-                    bx = createBlockData(ix.toLowerCase());
+                    bx = createBlockData(ix.toLowerCase(), warn);
                 } catch (Throwable e) {
                     e.printStackTrace();
                 }
@@ -488,7 +515,7 @@ public class B {
 
             if (bx == null) {
                 try {
-                    bx = createBlockData("minecraft:" + ix.toLowerCase());
+                    bx = createBlockData("minecraft:" + ix.toLowerCase(), warn);
                 } catch (Throwable e) {
 
                 }
@@ -548,7 +575,7 @@ public class B {
             for (String key : stateMap.keySet()) { //Iterate through every state and check if its valid
                 try {
                     String newState = block + "[" + key + "=" + stateMap.get(key) + "]";
-                    createBlockData(newState);
+                    createBlockData(newState, warn);
                     newStates.put(key, stateMap.get(key));
 
                 } catch (IllegalArgumentException ignored) {
@@ -562,7 +589,7 @@ public class B {
             Iris.debug("Converting " + ix + " to " + newBlock);
 
             try {
-                return createBlockData(newBlock);
+                return createBlockData(newBlock, warn);
             } catch (Throwable e1) {
                 Iris.reportError(e1);
             }
@@ -584,8 +611,7 @@ public class B {
     }
 
     public static boolean isUpdatable(BlockData mat) {
-        return isLit(mat)
-                || isStorage(mat)
+        return isStorage(mat)
                 || (mat instanceof PointedDripstone
                 && ((PointedDripstone) mat).getThickness().equals(PointedDripstone.Thickness.TIP));
     }
@@ -648,11 +674,33 @@ public class B {
             }
         }
 
-        for (Identifier id : Iris.service(ExternalDataSVC.class).getAllBlockIdentifiers())
+        for (Identifier id : Iris.service(ExternalDataSVC.class).getAllIdentifiers(DataType.BLOCK))
             bt.add(id.toString());
         bt.addAll(custom.k());
 
         return bt.toArray(new String[0]);
+    }
+
+    public synchronized static KMap<List<String>, List<BlockProperty>> getBlockStates() {
+        KMap<List<BlockProperty>, List<String>> flipped = new KMap<>();
+        INMS.get().getBlockProperties().forEach((k, v) -> {
+            flipped.computeIfAbsent(v, $ -> new KList<>()).add(k.getKey().toString());
+        });
+
+        var emptyStates = flipped.computeIfAbsent(new KList<>(0), $ -> new KList<>());
+        for (var pair : Iris.service(ExternalDataSVC.class).getAllBlockProperties()) {
+            if (pair.getB().isEmpty()) emptyStates.add(pair.getA().toString());
+            else flipped.computeIfAbsent(pair.getB(), $ -> new KList<>()).add(pair.getA().toString());
+        }
+        emptyStates.addAll(custom.k());
+
+        KMap<List<String>, List<BlockProperty>> states = new KMap<>();
+        flipped.forEach((k, v) -> {
+            var old = states.put(v, k);
+            if (old != null) Iris.error("Duplicate block state: " + v + " (" + old + " and " + k + ")");
+        });
+
+        return states;
     }
 
     public static String[] getItemTypes() {
@@ -663,7 +711,7 @@ public class B {
             bt.add(v);
         }
 
-        for (Identifier id : Iris.service(ExternalDataSVC.class).getAllItemIdentifiers())
+        for (Identifier id : Iris.service(ExternalDataSVC.class).getAllIdentifiers(DataType.ITEM))
             bt.add(id.toString());
 
         return bt.toArray(new String[0]);

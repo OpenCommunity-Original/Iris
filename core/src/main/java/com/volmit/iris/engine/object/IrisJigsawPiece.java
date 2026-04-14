@@ -50,8 +50,7 @@ public class IrisJigsawPiece extends IrisRegistrant {
     @Desc("The object this piece represents")
     private String object = "";
 
-    @Required
-    @ArrayType(type = IrisJigsawPieceConnector.class, min = 1)
+    @ArrayType(type = IrisJigsawPieceConnector.class)
     @Desc("The connectors this object contains")
     private KList<IrisJigsawPieceConnector> connectors = new KList<>();
 
@@ -101,19 +100,12 @@ public class IrisJigsawPiece extends IrisRegistrant {
     }
 
     public IrisJigsawPiece copy() {
-        IrisJigsawPiece p = new IrisJigsawPiece();
-        p.setObject(getObject());
-        p.setLoader(getLoader());
-        p.setLoadKey(getLoadKey());
-        p.setLoadFile(getLoadFile());
-        p.setConnectors(new KList<>());
-        p.setPlacementOptions(getPlacementOptions());
-
-        for (IrisJigsawPieceConnector i : getConnectors()) {
-            p.getConnectors().add(i.copy());
-        }
-
-        return p;
+        var gson = getLoader().getGson();
+        IrisJigsawPiece copy = gson.fromJson(gson.toJson(this), IrisJigsawPiece.class);
+        copy.setLoader(getLoader());
+        copy.setLoadKey(getLoadKey());
+        copy.setLoadFile(getLoadFile());
+        return copy;
     }
 
     public boolean isTerminal() {

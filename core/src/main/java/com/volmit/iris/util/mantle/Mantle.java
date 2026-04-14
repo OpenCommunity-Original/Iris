@@ -33,29 +33,27 @@ import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.documentation.RegionCoordinates;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.format.Form;
+import com.volmit.iris.util.function.Consumer3;
 import com.volmit.iris.util.function.Consumer4;
+import com.volmit.iris.util.io.IO;
+import com.volmit.iris.util.mantle.io.IOWorker;
+import com.volmit.iris.util.mantle.flag.MantleFlag;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.matter.Matter;
 import com.volmit.iris.util.matter.MatterSlice;
-import com.volmit.iris.util.misc.getHardware;
 import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.HyperLock;
 import com.volmit.iris.util.parallel.MultiBurst;
-import com.volmit.iris.util.scheduling.Looper;
 import lombok.Getter;
 import org.bukkit.Chunk;
-import org.checkerframework.checker.units.qual.A;
 
-import java.io.EOFException;
-import java.io.File;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.io.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * The mantle can store any type of data slice anywhere and manage regions & IO on it's own.
@@ -63,20 +61,21 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 
 public class Mantle {
+    private static final int LOCK_SIZE = Short.MAX_VALUE;
+
     private final File dataFolder;
-    private final int worldHeight;
-    private final Map<Long, Long> lastUse;
     @Getter
-    private final Map<Long, TectonicPlate> loadedRegions;
+    private final int worldHeight;
+    private final KMap<Long, Long> lastUse;
+    private final KMap<Long, TectonicPlate> loadedRegions;
     private final HyperLock hyperLock;
-    private final KSet<Long> unload;
     private final AtomicBoolean closed;
     private final MultiBurst ioBurst;
-    private final AtomicBoolean io;
-    private final Object gcMonitor = new Object();
-    long apm = getHardware.getAvailableProcessMemory();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-    int tectonicLimitBeforeOutMemory;
+    private final Semaphore ioTrim;
+    private final Semaphore ioTectonicUnload;
+    private final IOWorker worker;
+    private final AtomicDouble adjustedIdleDuration;
+    private final KSet<Long> toUnload;
 
     /**
      * Create a new mantle
@@ -90,12 +89,14 @@ public class Mantle {
         this.closed = new AtomicBoolean(false);
         this.dataFolder = dataFolder;
         this.worldHeight = worldHeight;
-        this.io = new AtomicBoolean(false);
-        dataFolder.mkdirs();
-        unload = new KSet<>();
+        this.ioTrim = new Semaphore(LOCK_SIZE, true);
+        this.ioTectonicUnload = new Semaphore(LOCK_SIZE, true);
         loadedRegions = new KMap<>();
         lastUse = new KMap<>();
-        ioBurst = MultiBurst.burst;
+        ioBurst = MultiBurst.ioBurst;
+        adjustedIdleDuration = new AtomicDouble(0);
+        toUnload = new KSet<>();
+        worker = new IOWorker(dataFolder, worldHeight);
         Iris.debug("Opened The Mantle " + C.DARK_AQUA + dataFolder.getAbsolutePath());
     }
 
@@ -108,7 +109,7 @@ public class Mantle {
      * @return the file
      */
     public static File fileForRegion(File folder, int x, int z) {
-        return fileForRegion(folder, key(x, z));
+        return fileForRegion(folder, key(x, z), true);
     }
 
     /**
@@ -118,12 +119,28 @@ public class Mantle {
      * @param key    the region key
      * @return the file
      */
-    public static File fileForRegion(File folder, Long key) {
-        File f = new File(folder, "p." + key + ".ttp");
-        if (!f.getParentFile().exists()) {
-            f.getParentFile().mkdirs();
+    public static File fileForRegion(File folder, Long key, boolean convert) {
+        File f = oldFileForRegion(folder, key);
+        File fv = new File(folder, "pv." + key + ".ttp.lz4b");
+        if (f.exists() && !fv.exists() && convert)
+            return f;
+
+        if (!fv.getParentFile().exists()) {
+            fv.getParentFile().mkdirs();
         }
-        return f;
+        return fv;
+    }
+
+
+    /**
+     * Get the old file for the given region
+     *
+     * @param folder the data folder
+     * @param key    the region key
+     * @return the file
+     */
+    public static File oldFileForRegion(File folder, Long key) {
+        return new File(folder, "p." + key + ".ttp.lz4b");
     }
 
     /**
@@ -163,8 +180,8 @@ public class Mantle {
      * @return the writer
      */
     @ChunkCoordinates
-    public MantleWriter write(EngineMantle engineMantle, int x, int z, int radius) {
-        return new MantleWriter(engineMantle, this, x, z, radius);
+    public MantleWriter write(EngineMantle engineMantle, int x, int z, int radius, boolean multicore) {
+        return new MantleWriter(engineMantle, this, x, z, radius, multicore);
     }
 
     /**
@@ -186,6 +203,68 @@ public class Mantle {
     @ChunkCoordinates
     public MantleChunk getChunk(int x, int z) {
         return get(x >> 5, z >> 5).getOrCreate(x & 31, z & 31);
+    }
+
+    public void getChunks(final int minChunkX,
+                          final int maxChunkX,
+                          final int minChunkZ,
+                          final int maxChunkZ,
+                          int parallelism,
+                          final Consumer3<Integer, Integer, MantleChunk> consumer
+    ) {
+        if (parallelism <= 0) parallelism = 1;
+        final var lock = new Semaphore(parallelism);
+
+        final int minRegionX = minChunkX >> 5;
+        final int maxRegionX = maxChunkX >> 5;
+        final int minRegionZ = minChunkZ >> 5;
+        final int maxRegionZ = maxChunkZ >> 5;
+
+        final int minRelativeX = minChunkX & 31;
+        final int maxRelativeX = maxChunkX & 31;
+        final int minRelativeZ = minChunkZ & 31;
+        final int maxRelativeZ = maxChunkZ & 31;
+
+        final AtomicReference<Throwable> error = new AtomicReference<>();
+        for (int rX = minRegionX; rX <= maxRegionX; rX++) {
+            final int minX = rX == minRegionX ? minRelativeX : 0;
+            final int maxX = rX == maxRegionX ? maxRelativeX : 31;
+            for (int rZ = minRegionZ; rZ <= maxRegionZ; rZ++) {
+                final int minZ = rZ == minRegionZ ? minRelativeZ : 0;
+                final int maxZ = rZ == maxRegionZ ? maxRelativeZ : 31;
+                final int realX = rX << 5;
+                final int realZ = rZ << 5;
+
+                lock.acquireUninterruptibly();
+                final var e = error.get();
+                if (e != null) {
+                    if (e instanceof RuntimeException ex) throw ex;
+                    else if (e instanceof Error ex) throw ex;
+                    else throw new RuntimeException(error.get());
+                }
+
+                getFuture(rX, rZ)
+                        .thenAccept(region -> {
+                            final MantleChunk zero = region.getOrCreate(0, 0).use();
+                            try {
+                                for (int xx = minX; xx <= maxX; xx++) {
+                                    for (int zz = minZ; zz <= maxZ; zz++) {
+                                        consumer.accept(realX + xx, realZ + zz, region.getOrCreate(xx, zz));
+                                    }
+                                }
+                            } finally {
+                                zero.release();
+                            }
+                        })
+                        .exceptionally(ex -> {
+                            error.set(ex);
+                            return null;
+                        })
+                        .thenRun(lock::release);
+            }
+        }
+
+        lock.acquireUninterruptibly(parallelism);
     }
 
     /**
@@ -215,7 +294,7 @@ public class Mantle {
     @RegionCoordinates
     public boolean hasTectonicPlate(int x, int z) {
         Long k = key(x, z);
-        return loadedRegions.containsKey(k) || fileForRegion(dataFolder, k).exists();
+        return loadedRegions.containsKey(k) || fileForRegion(dataFolder, k, true).exists();
     }
 
     /**
@@ -359,42 +438,38 @@ public class Mantle {
      */
     public synchronized void close() {
         Iris.debug("Closing The Mantle " + C.DARK_AQUA + dataFolder.getAbsolutePath());
-        if (closed.get()) {
+        if (closed.getAndSet(true)) {
             return;
         }
 
-        closed.set(true);
-        BurstExecutor b = ioBurst.burst(loadedRegions.size());
-        for (Long i : loadedRegions.keySet()) {
-            b.queue(() -> {
-                try {
-                    loadedRegions.get(i).write(fileForRegion(dataFolder, i));
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
-        }
+        hyperLock.disable();
+        BurstExecutor b = ioBurst.burst(toUnload.size());
+        loadedRegions.forEach((i, plate) -> b.queue(() -> {
+            try {
+                plate.close();
+                worker.write(fileForRegion(dataFolder, i, false).getName(), plate);
+                oldFileForRegion(dataFolder, i).delete();
+            } catch (Throwable e) {
+                Iris.error("Failed to write Tectonic Plate " + C.DARK_GREEN + Cache.keyX(i) + " " + Cache.keyZ(i));
+                Iris.reportError(e);
+                e.printStackTrace();
+            }
+        }));
+        loadedRegions.clear();
 
         try {
             b.complete();
         } catch (Throwable e) {
             Iris.reportError(e);
         }
+        try {
+            worker.close();
+        } catch (Throwable e) {
+            Iris.reportError(e);
+        }
 
-        loadedRegions.clear();
+        IO.delete(new File(dataFolder, ".tmp"));
         Iris.debug("The Mantle has Closed " + C.DARK_AQUA + dataFolder.getAbsolutePath());
-    }
-
-    /**
-     * Estimates the memory usage of the lastUse map.
-     *
-     * @return Estimated memory usage in bytes.
-     */
-
-    public long LastUseMapMemoryUsage() {
-        long numberOfEntries = lastUse.size();
-        long bytesPerEntry = Long.BYTES * 2;
-        return numberOfEntries * bytesPerEntry;
     }
 
     /**
@@ -403,80 +478,97 @@ public class Mantle {
      *
      * @param baseIdleDuration the duration
      */
-
-    public AtomicInteger FakeToUnload = new AtomicInteger(0);
-     public AtomicDouble adjustedIdleDuration = new AtomicDouble(0);
-     public AtomicInteger tectonicLimit = new AtomicInteger(30);
-
-
-    public synchronized void trim(long baseIdleDuration) {
+    public synchronized void trim(long baseIdleDuration, int tectonicLimit) {
         if (closed.get()) {
             throw new RuntimeException("The Mantle is closed");
         }
 
-       if (IrisSettings.get().getPerformance().dynamicPerformanceMode){
-            tectonicLimit.set(2);
-            long t = getHardware.getProcessMemory();
-            for (; t > 250;){
-                tectonicLimit.getAndAdd(1);
-                t = t - 250;
-            }
-        }
-
-        adjustedIdleDuration.set(baseIdleDuration);
-
-        if (loadedRegions.size() > tectonicLimit.get()) {
+        double idleDuration = baseIdleDuration;
+        if (loadedRegions.size() > tectonicLimit) {
             // todo update this correctly and maybe do something when its above a 100%
-            if (IrisSettings.get().getPerformance().dynamicPerformanceMode) {
-                int tectonicLimitValue = tectonicLimit.get();
-                adjustedIdleDuration.set(Math.max(adjustedIdleDuration.get() - (1000 * (((loadedRegions.size() - tectonicLimitValue) / (double) tectonicLimitValue) * 100) * 0.4), 4000));
-            }
+            idleDuration = Math.max(idleDuration - (1000 * (((loadedRegions.size() - tectonicLimit) / (double) tectonicLimit) * 100) * 0.4), 4000);
         }
+        adjustedIdleDuration.set(idleDuration);
 
-        io.set(true);
-
+        ioTrim.acquireUninterruptibly(LOCK_SIZE);
         try {
-            Iris.debug("Trimming Tectonic Plates older than " + Form.duration(adjustedIdleDuration.get(), 0));
-            Set<Long> toUnload = new HashSet<>();
+            Iris.debug("Trimming Tectonic Plates older than " + Form.duration(idleDuration, 0));
 
-            for (Long i : lastUse.keySet()) {
-                double finalAdjustedIdleDuration = adjustedIdleDuration.get();
-                hyperLock.withLong(i, () -> {
-                    if (M.ms() - lastUse.get(i) >= finalAdjustedIdleDuration) {
-                        toUnload.add(i);
-                        FakeToUnload.addAndGet(1);
+            if (lastUse.isEmpty()) return;
+            double unloadTime = M.ms() - idleDuration;
+            for (long id : lastUse.keySet()) {
+                hyperLock.withLong(id, () -> {
+                    Long lastUseTime = lastUse.get(id);
+                    if (lastUseTime != null && lastUseTime < unloadTime) {
+                        toUnload.add(id);
                         Iris.debug("Tectonic Region added to unload");
                     }
                 });
             }
-
-            BurstExecutor burstExecutor = new BurstExecutor(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()), toUnload.size());
-
-            for (Long i : toUnload) {
-                burstExecutor.queue(() -> {
-                    hyperLock.withLong(i, () -> {
-                        TectonicPlate m = loadedRegions.get(i);
-                        if (m != null) {
-                            try {
-                                m.write(fileForRegion(dataFolder, i));
-                                loadedRegions.remove(i);
-                                lastUse.remove(i);
-                                Iris.debug("Unloaded Tectonic Plate " + C.DARK_GREEN + Cache.keyX(i) + " " + Cache.keyZ(i));
-                                FakeToUnload.addAndGet(-1);
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    });
-                });
-            }
-
-            burstExecutor.complete();
-
+        } catch (Throwable e) {
+            Iris.reportError(e);
         } finally {
-            io.set(false);
+            ioTrim.release(LOCK_SIZE);
         }
     }
+
+    public synchronized int unloadTectonicPlate(int tectonicLimit) {
+        if (closed.get()) {
+            throw new RuntimeException("The Mantle is closed");
+        }
+
+        AtomicInteger i = new AtomicInteger();
+        BurstExecutor burst = ioBurst.burst(toUnload.size());
+        burst.setMulticore(toUnload.size() > tectonicLimit);
+
+        ioTectonicUnload.acquireUninterruptibly(LOCK_SIZE);
+        try {
+            double unloadTime = M.ms() - adjustedIdleDuration.get();
+            for (long id : toUnload) {
+                burst.queue(() -> hyperLock.withLong(id, () -> {
+                    TectonicPlate m = loadedRegions.get(id);
+                    if (m == null) {
+                        Iris.debug("Tectonic Plate was added to unload while not loaded " + C.DARK_GREEN + Cache.keyX(id) + " " + Cache.keyZ(id));
+                        toUnload.remove(id);
+                        return;
+                    }
+
+                    var used = lastUse.getOrDefault(id, 0L);
+                    if (!toUnload.contains(id) || used >= unloadTime) {
+                        return;
+                    }
+
+                    if (m.inUse()) {
+                        Iris.debug("Tectonic Plate was added to unload while in use " + C.DARK_GREEN + m.getX() + " " + m.getZ());
+                        use(id);
+                        return;
+                    }
+
+                    try {
+                        m.close();
+                        worker.write(fileForRegion(dataFolder, id, false).getName(), m);
+                        oldFileForRegion(dataFolder, id).delete();
+                        loadedRegions.remove(id, m);
+                        lastUse.remove(id);
+                        toUnload.remove(id);
+                        i.incrementAndGet();
+                        Iris.debug("Unloaded Tectonic Plate " + C.DARK_GREEN + Cache.keyX(id) + " " + Cache.keyZ(id));
+                    } catch (IOException | InterruptedException e) {
+                        Iris.reportError(e);
+                    }
+                }));
+            }
+            burst.complete();
+        } catch (Throwable e) {
+            Iris.reportError(e);
+            e.printStackTrace();
+            burst.complete();
+        } finally {
+            ioTectonicUnload.release(LOCK_SIZE);
+        }
+        return i.get();
+    }
+
 
     /**
      * This retreives a future of the Tectonic Plate at the given coordinates.
@@ -488,34 +580,91 @@ public class Mantle {
      */
     @RegionCoordinates
     private TectonicPlate get(int x, int z) {
-        if (io.get()) {
+        boolean trim = ioTrim.tryAcquire();
+        boolean unload = ioTectonicUnload.tryAcquire();
+        try {
+            if (!trim || !unload) {
+                try {
+                    return getSafe(x, z).get();
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                }
+            } else {
+                Long key = key(x, z);
+                TectonicPlate p = loadedRegions.get(key);
+
+                if (p != null && !p.isClosed()) {
+                    use(key);
+                    return p;
+                }
+            }
+
             try {
                 return getSafe(x, z).get();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread intterruption (hotload?)");
+                Iris.reportError(e);
             } catch (ExecutionException e) {
-                e.printStackTrace();
+                Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread execution exception (engine close?)");
+                Iris.reportError(e);
+            } catch (Throwable e) {
+                Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a unknown exception");
+                Iris.reportError(e);
             }
-        }
-
-        TectonicPlate p = loadedRegions.get(key(x, z));
-
-        if (p != null) {
-            return p;
-        }
-
-        try {
-            return getSafe(x, z).get();
-        } catch (InterruptedException e) {
-            Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread intterruption (hotload?)");
-            Iris.reportError(e);
-        } catch (ExecutionException e) {
-            Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread execution exception (engine close?)");
-            Iris.reportError(e);
+        } finally {
+            if (trim) ioTrim.release();
+            if (unload) ioTectonicUnload.release();
         }
 
         Iris.warn("Retrying to get " + x + " " + z + " Mantle Region");
         return get(x, z);
+    }
+
+    private CompletableFuture<TectonicPlate> getFuture(int x, int z) {
+        final boolean trim = ioTrim.tryAcquire();
+        final boolean unload = ioTectonicUnload.tryAcquire();
+        final Function<TectonicPlate, TectonicPlate> release = p -> {
+            if (trim) ioTrim.release();
+            if (unload) ioTectonicUnload.release();
+            return p;
+        };
+
+        final Supplier<CompletableFuture<TectonicPlate>> fallback = () -> getSafe(x, z)
+                .exceptionally(e -> {
+                    if (e instanceof InterruptedException) {
+                        Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a thread intterruption (hotload?)");
+                        Iris.reportError(e);
+                    } else {
+                        Iris.warn("Failed to get Tectonic Plate " + x + " " + z + " Due to a unknown exception");
+                        Iris.reportError(e);
+                        e.printStackTrace();
+                    }
+                    return null;
+                })
+                .thenCompose(p -> {
+                    release.apply(p);
+                    if (p != null) return CompletableFuture.completedFuture(p);
+                    Iris.warn("Retrying to get " + x + " " + z + " Mantle Region");
+                    return getFuture(x, z);
+                });
+
+        if (!trim || !unload) {
+            return getSafe(x, z)
+                    .thenApply(release)
+                    .exceptionallyCompose(e -> {
+                        e.printStackTrace();
+                        return fallback.get();
+                    });
+        }
+
+        Long key = key(x, z);
+        TectonicPlate p = loadedRegions.get(key);
+        if (p != null && !p.isClosed()) {
+            use(key);
+            return CompletableFuture.completedFuture(release.apply(p));
+        }
+
+        return fallback.get();
     }
 
     /**
@@ -527,29 +676,21 @@ public class Mantle {
      * @return the future of a tectonic plate.
      */
     @RegionCoordinates
-    private Future<TectonicPlate> getSafe(int x, int z) {
-        Long k = key(x, z);
-        TectonicPlate p = loadedRegions.get(k);
-
-        if (p != null) {
-            lastUse.put(k, M.ms());
-            return CompletableFuture.completedFuture(p);
-        }
-
-        return ioBurst.completeValue(() -> hyperLock.withResult(x, z, () -> {
-            lastUse.put(k, M.ms());
-            TectonicPlate region = loadedRegions.get(k);
-
-            if (region != null) {
-                return region;
+    protected CompletableFuture<TectonicPlate> getSafe(int x, int z) {
+        return ioBurst.completableFuture(() -> hyperLock.withResult(x, z, () -> {
+            Long k = key(x, z);
+            use(k);
+            TectonicPlate r = loadedRegions.get(k);
+            if (r != null && !r.isClosed()) {
+                return r;
             }
 
+            TectonicPlate region;
             File file = fileForRegion(dataFolder, x, z);
-
             if (file.exists()) {
                 try {
                     Iris.addPanic("reading.tectonic-plate", file.getAbsolutePath());
-                    region = TectonicPlate.read(worldHeight, file);
+                    region = worker.read(file.getName());
 
                     if (region.getX() != x || region.getZ() != z) {
                         Iris.warn("Loaded Tectonic Plate " + x + "," + z + " but read it as " + region.getX() + "," + region.getZ() + "... Assuming " + x + "," + z);
@@ -569,22 +710,25 @@ public class Mantle {
                     Iris.debug("Created new Tectonic Plate (Due to Load Failure) " + C.DARK_GREEN + x + " " + z);
                 }
 
+                use(k);
                 return region;
             }
 
             region = new TectonicPlate(worldHeight, x, z);
             loadedRegions.put(k, region);
             Iris.debug("Created new Tectonic Plate " + C.DARK_GREEN + x + " " + z);
+            use(k);
             return region;
         }));
     }
 
-    public void saveAll() {
-
+    private void use(Long key) {
+        lastUse.put(key, M.ms());
+        toUnload.remove(key);
     }
 
-    public int getWorldHeight() {
-        return worldHeight;
+    public void saveAll() {
+
     }
 
     public MantleChunk getChunk(Chunk e) {
@@ -592,7 +736,7 @@ public class Mantle {
     }
 
     public void deleteChunkSlice(int x, int z, Class<?> c) {
-        if (!IrisToolbelt.toolbeltConfiguration.isEmpty() && IrisToolbelt.toolbeltConfiguration.getOrDefault("retain.mantle." + c.getCanonicalName(), false)) {
+        if (IrisToolbelt.isRetainingMantleDataForSlice(c.getCanonicalName())) {
             return;
         }
 
@@ -601,6 +745,14 @@ public class Mantle {
 
     public int getLoadedRegionCount() {
         return loadedRegions.size();
+    }
+
+    public int getUnloadRegionCount() {
+        return toUnload.size();
+    }
+
+    public double getAdjustedIdleDuration() {
+        return adjustedIdleDuration.get();
     }
 
     public <T> void set(int x, int y, int z, MatterSlice<T> slice) {

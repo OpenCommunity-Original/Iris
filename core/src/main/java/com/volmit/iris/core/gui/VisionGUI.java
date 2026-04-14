@@ -39,7 +39,6 @@ import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.O;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import org.bukkit.Location;
-import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
@@ -55,6 +54,8 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
+
+import static com.volmit.iris.util.data.registry.Attributes.MAX_HEALTH;
 
 public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener, MouseMotionListener, MouseInputListener {
     private static final long serialVersionUID = 2094606939770332040L;
@@ -412,8 +413,7 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
     }
 
     private double getWorldX(double screenX) {
-        //return (mscale * screenX) + ((oxp / scale) * mscale);
-        return (mscale * screenX) + ((oxp / scale));
+        return (mscale * screenX) + ((oxp / scale) * mscale);
     }
 
     private double getWorldZ(double screenZ) {
@@ -483,6 +483,13 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
             hz += Math.abs(hz - lz) * 0.36;
         }
 
+        if (Math.abs(lx - hx) < 0.5) {
+            hx = lx;
+        }
+        if (Math.abs(lz - hz) < 0.5) {
+            hz = lz;
+        }
+
         if (centities.flip()) {
             J.s(() -> {
                 synchronized (lastEntities) {
@@ -507,8 +514,8 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
         int iscale = (int) scale;
         g.setColor(Color.white);
         g.clearRect(0, 0, w, h);
-        int posX = (int) oxp;
-        int posZ = (int) ozp;
+        double offsetX = oxp / scale;
+        double offsetZ = ozp / scale;
         m.set(3);
 
         for (int r = 0; r < Math.max(w, h); r += iscale) {
@@ -517,10 +524,14 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
                     int a = i - (w / 2);
                     int b = j - (h / 2);
                     if (a * a + b * b <= r * r) {
-                        BufferedImage t = getTile(gg, iscale, Math.floorDiv((posX / iscale) + i, iscale) * iscale, Math.floorDiv((posZ / iscale) + j, iscale) * iscale, m);
+                        int tx = (int) (Math.floor((offsetX + i) / iscale) * iscale);
+                        int tz = (int) (Math.floor((offsetZ + j) / iscale) * iscale);
+                        BufferedImage t = getTile(gg, iscale, tx, tz, m);
 
                         if (t != null) {
-                            g.drawImage(t, i - ((posX / iscale) % (iscale)), j - ((posZ / iscale) % (iscale)), iscale, iscale, (img, infoflags, x, y, width, height) -> true);
+                            int rx = Math.floorMod((int) Math.floor(offsetX), iscale);
+                            int rz = Math.floorMod((int) Math.floor(offsetZ), iscale);
+                            g.drawImage(t, i - rx, j - rz, iscale, iscale, (img, infoflags, x, y, width, height) -> true);
                         }
                     }
                 }
@@ -636,7 +647,7 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
 
                 k.add("Pos: " + h.getLocation().getBlockX() + ", " + h.getLocation().getBlockY() + ", " + h.getLocation().getBlockZ());
                 k.add("UUID: " + h.getUniqueId());
-                k.add("HP: " + h.getHealth() + " / " + h.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue());
+                k.add("HP: " + h.getHealth() + " / " + h.getAttribute(MAX_HEALTH).getValue());
 
                 drawCardTR(g, k);
             }
@@ -648,8 +659,8 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
     private void animateTo(double wx, double wz) {
         double cx = getWorldX(getWidth() / 2);
         double cz = getWorldZ(getHeight() / 2);
-        ox += (wx - cx);
-        oz += (wz - cz);
+        ox += ((wx - cx) / mscale) * scale;
+        oz += ((wz - cz) / mscale) * scale;
     }
 
     private void renderPosition(Graphics2D g, double x, double z) {
@@ -804,11 +815,28 @@ public class VisionGUI extends JPanel implements MouseWheelListener, KeyListener
             return;
         }
 
-        //Iris.info("Blocks/Pixel: " + (mscale) + ", Blocks Wide: " + (w * mscale));
+        double m0 = mscale;
+        double m1 = m0 + ((0.25 * m0) * notches);
+        m1 = Math.max(m1, 0.00001);
+        if (m1 == m0) {
+            return;
+        }
+
         positions.clear();
         fastpositions.clear();
-        mscale = mscale + ((0.25 * mscale) * notches);
-        mscale = Math.max(mscale, 0.00001);
+
+        Point p = e.getPoint();
+        double sx = p.getX();
+        double sz = p.getY();
+
+        double newOxp = scale * ((m0 / m1) * (sx + (oxp / scale)) - sx);
+        double newOzp = scale * ((m0 / m1) * (sz + (ozp / scale)) - sz);
+
+        mscale = m1;
+        oxp = newOxp;
+        ozp = newOzp;
+        ox = oxp;
+        oz = ozp;
     }
 
     @Override

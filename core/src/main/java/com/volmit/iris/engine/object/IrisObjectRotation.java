@@ -22,17 +22,21 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.engine.object.annotations.Desc;
 import com.volmit.iris.engine.object.annotations.Snippet;
 import com.volmit.iris.util.collection.KList;
+import com.volmit.iris.util.collection.KMap;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.bukkit.Axis;
-import org.bukkit.Material;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.*;
+import org.bukkit.block.data.type.RedstoneWire;
+import org.bukkit.block.data.type.Wall;
 import org.bukkit.util.BlockVector;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Snippet("object-rotator")
 @Accessors(chain = true)
@@ -41,6 +45,8 @@ import java.util.List;
 @Desc("Configures rotation for iris")
 @Data
 public class IrisObjectRotation {
+    private static final List<BlockFace> WALL_FACES = List.of(BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST);
+
     @Desc("If this rotator is enabled or not")
     private boolean enabled = true;
 
@@ -95,12 +101,17 @@ public class IrisObjectRotation {
         return e.rotateCopy(this);
     }
 
-    public IrisJigsawPiece rotateCopy(IrisJigsawPiece v) {
+    public IrisJigsawPiece rotateCopy(IrisJigsawPiece v, IrisPosition offset) {
         IrisJigsawPiece piece = v.copy();
         for (IrisJigsawPieceConnector i : piece.getConnectors()) {
-            i.setPosition(rotate(i.getPosition()));
+            i.setPosition(rotate(i.getPosition()).add(offset));
             i.setDirection(rotate(i.getDirection()));
         }
+        try {
+            var translate = piece.getPlacementOptions().getTranslate();
+            var pos = rotate(new IrisPosition(translate.getX(), translate.getY(), translate.getZ())).add(offset);
+            translate.setX(pos.getX()).setY(pos.getY()).setZ(pos.getZ());
+        } catch (NullPointerException ignored) {}
 
         return piece;
     }
@@ -248,14 +259,14 @@ public class IrisObjectRotation {
 
                 g.setRotation(face);
 
-            } else if (d instanceof Orientable) {
-                BlockFace f = getFace(((Orientable) d).getAxis());
+            } else if (d instanceof Orientable g) {
+                BlockFace f = getFace(g.getAxis());
                 BlockVector bv = new BlockVector(f.getModX(), f.getModY(), f.getModZ());
                 bv = rotate(bv.clone(), spinx, spiny, spinz);
                 Axis a = getAxis(bv);
 
-                if (!a.equals(((Orientable) d).getAxis()) && ((Orientable) d).getAxes().contains(a)) {
-                    ((Orientable) d).setAxis(a);
+                if (!a.equals(g.getAxis()) && g.getAxes().contains(a)) {
+                    g.setAxis(a);
                 }
             } else if (d instanceof MultipleFacing g) {
                 List<BlockFace> faces = new KList<>();
@@ -277,14 +288,38 @@ public class IrisObjectRotation {
                 for (BlockFace i : faces) {
                     g.setFace(i, true);
                 }
-            } else if (d.getMaterial().equals(Material.NETHER_PORTAL) && d instanceof Orientable g) {
-                //TODO: Fucks up logs
-                BlockFace f = faceForAxis(g.getAxis());
-                BlockVector bv = new BlockVector(f.getModX(), f.getModY(), f.getModZ());
-                bv = rotate(bv.clone(), spinx, spiny, spinz);
-                BlockFace t = getFace(bv);
-                Axis a = !g.getAxes().contains(Axis.Y) ? axisFor(t) : axisFor2D(t);
-                ((Orientable) d).setAxis(a);
+            } else if (d instanceof Wall wall) {
+                KMap<BlockFace, Wall.Height> faces = new KMap<>();
+
+                for (BlockFace i : WALL_FACES) {
+                    Wall.Height h = wall.getHeight(i);
+                    BlockVector bv = new BlockVector(i.getModX(), i.getModY(), i.getModZ());
+                    bv = rotate(bv.clone(), spinx, spiny, spinz);
+                    BlockFace r = getFace(bv);
+                    if (WALL_FACES.contains(r)) {
+                        faces.put(r, h);
+                    }
+                }
+
+                for (BlockFace i : WALL_FACES) {
+                    wall.setHeight(i, faces.getOrDefault(i, Wall.Height.NONE));
+                }
+            } else if (d instanceof RedstoneWire wire) {
+                Map<BlockFace, RedstoneWire.Connection> faces = new HashMap<>();
+
+                var allowed = wire.getAllowedFaces();
+                for (BlockFace i : allowed) {
+                    RedstoneWire.Connection connection = wire.getFace(i);
+                    BlockVector bv = new BlockVector(i.getModX(), i.getModY(), i.getModZ());
+                    bv = rotate(bv.clone(), spinx, spiny, spinz);
+                    BlockFace r = getFace(bv);
+                    if (allowed.contains(r))
+                        faces.put(r, connection);
+                }
+
+                for (BlockFace i : allowed) {
+                    wire.setFace(i, faces.getOrDefault(i, RedstoneWire.Connection.NONE));
+                }
             }
         } catch (Throwable e) {
             Iris.reportError(e);

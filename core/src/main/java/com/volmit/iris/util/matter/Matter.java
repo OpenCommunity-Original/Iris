@@ -23,6 +23,8 @@ import com.volmit.iris.engine.object.IrisObject;
 import com.volmit.iris.engine.object.IrisPosition;
 import com.volmit.iris.util.collection.KSet;
 import com.volmit.iris.util.hunk.Hunk;
+import com.volmit.iris.util.io.CountingDataInputStream;
+import com.volmit.iris.util.mantle.TectonicPlate;
 import com.volmit.iris.util.math.BlockPosition;
 import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
@@ -83,31 +85,30 @@ public interface Matter {
         BlockVector min = new BlockVector();
         Matter m = new IrisMatter(Math.max(object.getW(), 1) + 1, Math.max(object.getH(), 1) + 1, Math.max(object.getD(), 1) + 1);
 
-        for (BlockVector i : object.getBlocks().keySet()) {
+        for (BlockVector i : object.getBlocks().keys()) {
             min.setX(Math.min(min.getX(), i.getX()));
             min.setY(Math.min(min.getY(), i.getY()));
             min.setZ(Math.min(min.getZ(), i.getZ()));
         }
 
-        for (BlockVector i : object.getBlocks().keySet()) {
+        for (BlockVector i : object.getBlocks().keys()) {
             m.slice(BlockData.class).set(i.getBlockX() - min.getBlockX(), i.getBlockY() - min.getBlockY(), i.getBlockZ() - min.getBlockZ(), object.getBlocks().get(i));
         }
 
         return m;
     }
 
-    static Matter read(File f) throws IOException, ClassNotFoundException {
-        FileInputStream in = new FileInputStream(f);
-        Matter m = read(in);
-        in.close();
-        return m;
+    static Matter read(File f) throws IOException {
+        try (var in = new FileInputStream(f)) {
+            return read(in);
+        }
     }
 
-    static Matter read(InputStream in) throws IOException, ClassNotFoundException {
+    static Matter read(InputStream in) throws IOException {
         return read(in, (b) -> new IrisMatter(b.getX(), b.getY(), b.getZ()));
     }
 
-    static Matter readDin(DataInputStream in) throws IOException, ClassNotFoundException {
+    static Matter readDin(CountingDataInputStream in) throws IOException {
         return readDin(in, (b) -> new IrisMatter(b.getX(), b.getY(), b.getZ()));
     }
 
@@ -120,11 +121,11 @@ public interface Matter {
      * @return the matter object
      * @throws IOException shit happens yo
      */
-    static Matter read(InputStream in, Function<BlockPosition, Matter> matterFactory) throws IOException, ClassNotFoundException {
-        return readDin(new DataInputStream(in), matterFactory);
+    static Matter read(InputStream in, Function<BlockPosition, Matter> matterFactory) throws IOException {
+        return readDin(CountingDataInputStream.wrap(in), matterFactory);
     }
 
-    static Matter readDin(DataInputStream din, Function<BlockPosition, Matter> matterFactory) throws IOException, ClassNotFoundException {
+    static Matter readDin(CountingDataInputStream din, Function<BlockPosition, Matter> matterFactory) throws IOException {
         Matter matter = matterFactory.apply(new BlockPosition(
                 din.readInt(),
                 din.readInt(),
@@ -137,17 +138,36 @@ public interface Matter {
         Iris.addPanic("read.matter.header", matter.getHeader().toString());
 
         for (int i = 0; i < sliceCount; i++) {
+            long size = din.readInt();
+            if (size == 0) continue;
+            long start = din.count();
+            long end = start + size;
+
             Iris.addPanic("read.matter.slice", i + "");
-            String cn = din.readUTF();
-            Iris.addPanic("read.matter.slice.class", cn);
             try {
+                String cn = din.readUTF();
+                Iris.addPanic("read.matter.slice.class", cn);
+
                 Class<?> type = Class.forName(cn);
                 MatterSlice<?> slice = matter.createSlice(type, matter);
                 slice.read(din);
+                if (din.count() < end) throw new IOException("Matter slice read size mismatch!");
                 matter.putSlice(type, slice);
             } catch (Throwable e) {
-                e.printStackTrace();
-                throw new IOException("Can't read class '" + cn + "' (slice count reverse at " + sliceCount + ")");
+                if (!(e instanceof ClassNotFoundException)) {
+                    Iris.error("Failed to read matter slice, skipping it.");
+                    Iris.addPanic("read.byte.range", start + " " + end);
+                    Iris.addPanic("read.byte.current", din.count() + "");
+                    Iris.reportError(e);
+                    e.printStackTrace();
+                    Iris.panic();
+                    TectonicPlate.addError();
+                }
+                din.skipTo(end);
+            }
+
+            if (din.count() != end) {
+                throw new IOException("Matter slice read size mismatch!");
             }
         }
 
@@ -414,8 +434,16 @@ public interface Matter {
         dos.writeByte(getSliceTypes().size());
         getHeader().write(dos);
 
+        var bytes = new ByteArrayOutputStream(1024);
+        var sub = new DataOutputStream(bytes);
         for (Class<?> i : getSliceTypes()) {
-            getSlice(i).write(dos);
+            try {
+                getSlice(i).write(sub);
+                dos.writeInt(bytes.size());
+                bytes.writeTo(dos);
+            } finally {
+                bytes.reset();
+            }
         }
     }
 

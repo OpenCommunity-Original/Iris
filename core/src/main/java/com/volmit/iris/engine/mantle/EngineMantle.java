@@ -20,36 +20,33 @@ package com.volmit.iris.engine.mantle;
 
 import com.volmit.iris.core.IrisSettings;
 import com.volmit.iris.core.loader.IrisData;
+import com.volmit.iris.core.nms.container.Pair;
 import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.framework.Engine;
 import com.volmit.iris.engine.framework.EngineTarget;
 import com.volmit.iris.engine.mantle.components.MantleJigsawComponent;
 import com.volmit.iris.engine.mantle.components.MantleObjectComponent;
-import com.volmit.iris.engine.object.IObjectPlacer;
 import com.volmit.iris.engine.object.IrisDimension;
 import com.volmit.iris.engine.object.IrisPosition;
-import com.volmit.iris.engine.object.TileData;
 import com.volmit.iris.util.collection.KList;
-import com.volmit.iris.util.context.ChunkContext;
-import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.hunk.Hunk;
 import com.volmit.iris.util.mantle.Mantle;
 import com.volmit.iris.util.mantle.MantleChunk;
-import com.volmit.iris.util.mantle.MantleFlag;
+import com.volmit.iris.util.mantle.flag.MantleFlag;
 import com.volmit.iris.util.matter.*;
 import com.volmit.iris.util.matter.slices.UpdateMatter;
-import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.MultiBurst;
-import org.bukkit.block.TileState;
 import org.bukkit.block.data.BlockData;
+import org.jetbrains.annotations.UnmodifiableView;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-// TODO: MOVE PLACER OUT OF MATTER INTO ITS OWN THING
-public interface EngineMantle extends IObjectPlacer {
+public interface EngineMantle extends MatterGenerator {
     BlockData AIR = B.get("AIR");
 
     Mantle getMantle();
@@ -58,9 +55,20 @@ public interface EngineMantle extends IObjectPlacer {
 
     int getRadius();
 
-    KList<MantleComponent> getComponents();
+    int getRealRadius();
 
-    void registerComponent(MantleComponent c);
+    @UnmodifiableView
+    List<Pair<List<MantleComponent>, Integer>> getComponents();
+
+    @UnmodifiableView
+    Map<MantleFlag, MantleComponent> getRegisteredComponents();
+
+    boolean registerComponent(MantleComponent c);
+
+    @UnmodifiableView
+    KList<MantleFlag> getComponentFlags();
+
+    void hotload();
 
     default int getHighest(int x, int z) {
         return getHighest(x, z, getData());
@@ -82,12 +90,10 @@ public interface EngineMantle extends IObjectPlacer {
         return getHighest(x, z, getData(), ignoreFluid);
     }
 
-    @Override
     default int getHighest(int x, int z, IrisData data) {
         return getHighest(x, z, data, false);
     }
 
-    @Override
     default int getHighest(int x, int z, IrisData data, boolean ignoreFluid) {
         return ignoreFluid ? trueHeight(x, z) : Math.max(trueHeight(x, z), getEngine().getDimension().getFluidHeight());
     }
@@ -96,21 +102,12 @@ public interface EngineMantle extends IObjectPlacer {
         return getComplex().getRoundedHeighteightStream().get(x, z);
     }
 
+    @Deprecated(forRemoval = true)
     default boolean isCarved(int x, int h, int z) {
         return getMantle().get(x, h, z, MatterCavern.class) != null;
     }
 
-    @Override
-    default void set(int x, int y, int z, BlockData d) {
-        getMantle().set(x, y, z, d == null ? AIR : d);
-    }
-
-    @Override
-    default void setTile(int x, int y, int z, TileData<? extends TileState> d) {
-        getMantle().set(x, y, z, new TileWrapper(d));
-    }
-
-    @Override
+    @Deprecated(forRemoval = true)
     default BlockData get(int x, int y, int z) {
         BlockData block = getMantle().get(x, y, z, BlockData.class);
         if (block == null)
@@ -118,33 +115,24 @@ public interface EngineMantle extends IObjectPlacer {
         return block;
     }
 
-    @Override
     default boolean isPreventingDecay() {
         return getEngine().getDimension().isPreventLeafDecay();
     }
 
-    @Override
-    default boolean isSolid(int x, int y, int z) {
-        return B.isSolid(get(x, y, z));
-    }
-
-    @Override
     default boolean isUnderwater(int x, int z) {
         return getHighest(x, z, true) <= getFluidHeight();
     }
 
-    @Override
     default int getFluidHeight() {
         return getEngine().getDimension().getFluidHeight();
     }
 
-    @Override
     default boolean isDebugSmartBore() {
         return getEngine().getDimension().isDebugSmartBore();
     }
 
-    default void trim(long dur) {
-        getMantle().trim(dur);
+    default void trim(long dur, int limit) {
+        getMantle().trim(dur, limit);
     }
 
     default IrisData getData() {
@@ -175,52 +163,15 @@ public interface EngineMantle extends IObjectPlacer {
 
     }
 
-    default void trim() {
-        getMantle().trim(TimeUnit.SECONDS.toMillis(IrisSettings.get().getPerformance().getMantleKeepAlive()));
+    default void trim(int limit) {
+        getMantle().trim(TimeUnit.SECONDS.toMillis(IrisSettings.get().getPerformance().getMantleKeepAlive()), limit);
+    }
+    default int unloadTectonicPlate(int tectonicLimit){
+        return getMantle().unloadTectonicPlate(tectonicLimit);
     }
 
     default MultiBurst burst() {
         return getEngine().burst();
-    }
-
-    default int getRealRadius() {
-        return (int) Math.ceil(getRadius() / 2D);
-    }
-
-
-    @ChunkCoordinates
-    default void generateMatter(int x, int z, boolean multicore, ChunkContext context) {
-        synchronized (this) {
-            if (!getEngine().getDimension().isUseMantle()) {
-                return;
-            }
-
-            int s = getRealRadius();
-            BurstExecutor burst = burst().burst(multicore);
-            MantleWriter writer = getMantle().write(this, x, z, s * 2);
-            for (int i = -s; i <= s; i++) {
-                for (int j = -s; j <= s; j++) {
-                    int xx = i + x;
-                    int zz = j + z;
-                    burst.queue(() -> {
-                        IrisContext.touch(getEngine().getContext());
-                        getMantle().raiseFlag(xx, zz, MantleFlag.PLANNED, () -> {
-                            MantleChunk mc = getMantle().getChunk(xx, zz);
-
-                            for (MantleComponent k : getComponents()) {
-                                generateMantleComponent(writer, xx, zz, k, mc, context);
-                            }
-                        });
-                    });
-                }
-            }
-
-            burst.complete();
-        }
-    }
-
-    default void generateMantleComponent(MantleWriter writer, int x, int z, MantleComponent c, MantleChunk mc, ChunkContext context) {
-        mc.raiseFlag(c.getFlag(), () -> c.generateLayer(writer, x, z, context));
     }
 
     @ChunkCoordinates
@@ -229,7 +180,12 @@ public interface EngineMantle extends IObjectPlacer {
             return;
         }
 
-        getMantle().iterateChunk(x, z, t, blocks::set);
+        var chunk = getMantle().getChunk(x, z).use();
+        try {
+            chunk.iterate(t, blocks::set);
+        } finally {
+            chunk.release();
+        }
     }
 
     @BlockCoordinates
@@ -257,9 +213,6 @@ public interface EngineMantle extends IObjectPlacer {
     default int getLoadedRegionCount() {
         return getMantle().getLoadedRegionCount();
     }
-    default long getLastUseMapMemoryUsage(){
-        return getMantle().LastUseMapMemoryUsage();
-    }
 
     MantleJigsawComponent getJigsawComponent();
 
@@ -282,23 +235,25 @@ public interface EngineMantle extends IObjectPlacer {
     }
 
     default void cleanupChunk(int x, int z) {
-        if (!getMantle().hasFlag(x, z, MantleFlag.CLEANED) && isCovered(x, z)) {
-            getMantle().raiseFlag(x, z, MantleFlag.CLEANED, () -> {
-                getMantle().deleteChunkSlice(x, z, BlockData.class);
-                getMantle().deleteChunkSlice(x, z, String.class);
-                getMantle().deleteChunkSlice(x, z, MatterCavern.class);
-                getMantle().deleteChunkSlice(x, z, MatterFluidBody.class);
+        if (!isCovered(x, z)) return;
+        MantleChunk chunk = getMantle().getChunk(x, z).use();
+        try {
+            chunk.raiseFlagUnchecked(MantleFlag.CLEANED, () -> {
+                chunk.deleteSlices(BlockData.class);
+                chunk.deleteSlices(String.class);
+                chunk.deleteSlices(MatterCavern.class);
+                chunk.deleteSlices(MatterFluidBody.class);
             });
+        } finally {
+            chunk.release();
         }
     }
 
-    default long getToUnload(){
-        return getMantle().FakeToUnload.get();
+    default int getUnloadRegionCount() {
+        return getMantle().getUnloadRegionCount();
     }
-    default double getTectonicLimit(){
-        return getMantle().tectonicLimit.get();
-    }
-    default double getTectonicDuration(){
-        return getMantle().adjustedIdleDuration.get();
+
+    default double getAdjustedIdleDuration() {
+        return getMantle().getAdjustedIdleDuration();
     }
 }

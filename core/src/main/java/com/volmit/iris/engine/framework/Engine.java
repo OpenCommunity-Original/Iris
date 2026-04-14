@@ -20,30 +20,36 @@ package com.volmit.iris.engine.framework;
 
 import com.volmit.iris.Iris;
 import com.volmit.iris.core.IrisSettings;
+import com.volmit.iris.core.events.IrisLootEvent;
 import com.volmit.iris.core.gui.components.RenderType;
 import com.volmit.iris.core.gui.components.Renderer;
+import com.volmit.iris.core.link.Identifier;
 import com.volmit.iris.core.loader.IrisData;
 import com.volmit.iris.core.loader.IrisRegistrant;
 import com.volmit.iris.core.nms.container.BlockPos;
 import com.volmit.iris.core.nms.container.Pair;
+import com.volmit.iris.core.pregenerator.ChunkUpdater;
+import com.volmit.iris.core.scripting.environment.EngineEnvironment;
+import com.volmit.iris.core.service.ExternalDataSVC;
 import com.volmit.iris.engine.IrisComplex;
 import com.volmit.iris.engine.data.cache.Cache;
 import com.volmit.iris.engine.data.chunk.TerrainChunk;
 import com.volmit.iris.engine.mantle.EngineMantle;
 import com.volmit.iris.engine.object.*;
-import com.volmit.iris.engine.scripting.EngineExecutionEnvironment;
 import com.volmit.iris.util.collection.KList;
 import com.volmit.iris.util.collection.KMap;
 import com.volmit.iris.util.context.ChunkContext;
 import com.volmit.iris.util.context.IrisContext;
 import com.volmit.iris.util.data.B;
 import com.volmit.iris.util.data.DataProvider;
+import com.volmit.iris.util.data.IrisCustomData;
 import com.volmit.iris.util.documentation.BlockCoordinates;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.format.C;
 import com.volmit.iris.util.function.Function2;
 import com.volmit.iris.util.hunk.Hunk;
-import com.volmit.iris.util.mantle.MantleFlag;
+import com.volmit.iris.util.mantle.MantleChunk;
+import com.volmit.iris.util.mantle.flag.MantleFlag;
 import com.volmit.iris.util.math.BlockPosition;
 import com.volmit.iris.util.math.M;
 import com.volmit.iris.util.math.Position2;
@@ -54,15 +60,13 @@ import com.volmit.iris.util.matter.TileWrapper;
 import com.volmit.iris.util.matter.slices.container.JigsawPieceContainer;
 import com.volmit.iris.util.parallel.BurstExecutor;
 import com.volmit.iris.util.parallel.MultiBurst;
+import com.volmit.iris.util.reflect.W;
 import com.volmit.iris.util.scheduling.ChronoLatch;
 import com.volmit.iris.util.scheduling.J;
 import com.volmit.iris.util.scheduling.PrecisionStopwatch;
 import com.volmit.iris.util.stream.ProceduralStream;
 import io.papermc.lib.PaperLib;
-import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
-import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -72,11 +76,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
-import java.awt.*;
-import java.util.Arrays;
+import java.awt.Color;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -105,7 +111,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
 
     IrisContext getContext();
 
-    EngineExecutionEnvironment getExecution();
+    EngineEnvironment getExecution();
 
     double getMaxBiomeObjectDensity();
 
@@ -135,7 +141,9 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         return getTarget().getWorld().minHeight();
     }
 
-    void setMinHeight(int min);
+    default void setMinHeight(int min) {
+        getTarget().getWorld().minHeight(min);
+    }
 
     @BlockCoordinates
     default void generate(int x, int z, TerrainChunk tc, boolean multicore) throws WrongEngineBroException {
@@ -225,6 +233,9 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     IrisJigsawStructure getStructureAt(int x, int z);
 
     @BlockCoordinates
+    IrisJigsawStructure getStructureAt(int x, int y, int z);
+
+    @BlockCoordinates
     default IrisBiome getCaveBiome(int x, int z) {
         return getComplex().getCaveBiomeStream().get(x, z);
     }
@@ -254,6 +265,9 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         if (B.isUpdatable(data)) {
             getMantle().updateBlock(x, y, z);
         }
+        if (data instanceof IrisCustomData) {
+            getMantle().getMantle().flag(x >> 4, z >> 4, MantleFlag.CUSTOM_ACTIVE, true);
+        }
     }
 
     void blockUpdatedMetric();
@@ -261,93 +275,127 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     @ChunkCoordinates
     @Override
     default void updateChunk(Chunk c) {
-        if (c.getWorld().isChunkLoaded(c.getX() + 1, c.getZ() + 1)
-                && c.getWorld().isChunkLoaded(c.getX(), c.getZ() + 1)
-                && c.getWorld().isChunkLoaded(c.getX() + 1, c.getZ())
-                && c.getWorld().isChunkLoaded(c.getX() - 1, c.getZ() - 1)
-                && c.getWorld().isChunkLoaded(c.getX(), c.getZ() - 1)
-                && c.getWorld().isChunkLoaded(c.getX() - 1, c.getZ())
-                && c.getWorld().isChunkLoaded(c.getX() + 1, c.getZ() - 1)
-                && c.getWorld().isChunkLoaded(c.getX() - 1, c.getZ() + 1) && getMantle().getMantle().isLoaded(c)) {
+        for (int x = -1; x <= 1; x++) {
+            for (int z = -1; z <= 1; z++) {
+                if (c.getWorld().isChunkLoaded(c.getX() + x, c.getZ() + z))
+                    continue;
+                var msg = "Chunk %s, %s [%s, %s] is not loaded".formatted(c.getX() + x, c.getZ() + z, x, z);
+                if (W.getStack().getCallerClass().equals(ChunkUpdater.class)) Iris.warn(msg);
+                else Iris.debug(msg);
+                return;
+            }
+        }
+        var mantle = getMantle().getMantle();
+        if (!mantle.isLoaded(c)) {
+            var msg = "Mantle Chunk " + c.getX() + c.getX() + " is not loaded";
+            if (W.getStack().getCallerClass().equals(ChunkUpdater.class)) Iris.warn(msg);
+            else Iris.debug(msg);
+            return;
+        }
 
-            getMantle().getMantle().raiseFlag(c.getX(), c.getZ(), MantleFlag.TILE, () -> J.s(() -> {
-                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), TileWrapper.class, (x, y, z, tile) -> {
-                    int betterY = y + getWorld().minHeight();
-                    if (!TileData.setTileState(c.getBlock(x, betterY, z), tile.getData()))
-                        Iris.warn("Failed to set tile entity data at [%d %d %d | %s] for tile %s!", x, betterY, z, c.getBlock(x, betterY, z).getBlockData().getMaterial().getKey(), tile.getData().getTileId());
-                });
-            }));
+        var chunk = mantle.getChunk(c).use();
+        try {
+            Semaphore semaphore = new Semaphore(1024);
+            chunk.raiseFlagUnchecked(MantleFlag.ETCHED, () -> {
+                chunk.raiseFlagUnchecked(MantleFlag.TILE, run(semaphore, () -> {
+                    chunk.iterate(TileWrapper.class, (x, y, z, v) -> {
+                        Block block = c.getBlock(x & 15, y + getWorld().minHeight(), z & 15);
+                        if (!TileData.setTileState(block, v.getData()))
+                            Iris.warn("Failed to set tile entity data at [%d %d %d | %s] for tile %s!", block.getX(), block.getY(), block.getZ(), block.getType().getKey(), v.getData().getMaterial().getKey());
+                    });
+                }, 0));
+                chunk.raiseFlagUnchecked(MantleFlag.CUSTOM, run(semaphore, () -> {
+                    chunk.iterate(Identifier.class, (x, y, z, v) -> {
+                        Iris.service(ExternalDataSVC.class).processUpdate(this, c.getBlock(x & 15, y + getWorld().minHeight(), z & 15), v);
+                    });
+                }, 0));
 
-            getMantle().getMantle().raiseFlag(c.getX(), c.getZ(), MantleFlag.UPDATE, () -> J.s(() -> {
-                PrecisionStopwatch p = PrecisionStopwatch.start();
-                KMap<Long, Integer> updates = new KMap<>();
-                RNG r = new RNG(Cache.key(c.getX(), c.getZ()));
-                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterCavern.class, (x, yf, z, v) -> {
-                    int y = yf + getWorld().minHeight();
-                    if (!B.isFluid(c.getBlock(x & 15, y, z & 15).getBlockData())) {
-                        return;
-                    }
-                    boolean u = false;
-                    if (B.isAir(c.getBlock(x & 15, y, z & 15).getRelative(BlockFace.DOWN).getBlockData())) {
-                        u = true;
-                    } else if (B.isAir(c.getBlock(x & 15, y, z & 15).getRelative(BlockFace.WEST).getBlockData())) {
-                        u = true;
-                    } else if (B.isAir(c.getBlock(x & 15, y, z & 15).getRelative(BlockFace.EAST).getBlockData())) {
-                        u = true;
-                    } else if (B.isAir(c.getBlock(x & 15, y, z & 15).getRelative(BlockFace.SOUTH).getBlockData())) {
-                        u = true;
-                    } else if (B.isAir(c.getBlock(x & 15, y, z & 15).getRelative(BlockFace.NORTH).getBlockData())) {
-                        u = true;
-                    }
-
-                    if (u) {
-                        updates.compute(Cache.key(x & 15, z & 15), (k, vv) -> {
-                            if (vv != null) {
-                                return Math.max(vv, y);
-                            }
-
-                            return y;
-                        });
-                    }
-                });
-
-                updates.forEach((k, v) -> update(Cache.keyX(k), v, Cache.keyZ(k), c, r));
-                getMantle().getMantle().iterateChunk(c.getX(), c.getZ(), MatterUpdate.class, (x, yf, z, v) -> {
-                    int y = yf + getWorld().minHeight();
-                    if (v != null && v.isUpdate()) {
-                        int vx = x & 15;
-                        int vz = z & 15;
-                        update(x, y, z, c, new RNG(Cache.key(c.getX(), c.getZ())));
-                        if (vx > 0 && vx < 15 && vz > 0 && vz < 15) {
-                            updateLighting(x, y, z, c);
+                chunk.raiseFlagUnchecked(MantleFlag.UPDATE, run(semaphore, () -> {
+                    PrecisionStopwatch p = PrecisionStopwatch.start();
+                    int[][] grid = new int[16][16];
+                    for (int x = 0; x < 16; x++) {
+                        for (int z = 0; z < 16; z++) {
+                            grid[x][z] = Integer.MIN_VALUE;
                         }
                     }
-                });
-                getMantle().getMantle().deleteChunkSlice(c.getX(), c.getZ(), MatterUpdate.class);
-                getMetrics().getUpdates().put(p.getMilliseconds());
-            }, RNG.r.i(0, 20)));
+
+                    RNG rng = new RNG(Cache.key(c.getX(), c.getZ()));
+                    chunk.iterate(MatterCavern.class, (x, yf, z, v) -> {
+                        int y = yf + getWorld().minHeight();
+                        x &= 15;
+                        z &= 15;
+                        Block block = c.getBlock(x, y, z);
+                        if (!B.isFluid(block.getBlockData())) {
+                            return;
+                        }
+                        boolean u = B.isAir(block.getRelative(BlockFace.DOWN).getBlockData())
+                                || B.isAir(block.getRelative(BlockFace.WEST).getBlockData())
+                                || B.isAir(block.getRelative(BlockFace.EAST).getBlockData())
+                                || B.isAir(block.getRelative(BlockFace.SOUTH).getBlockData())
+                                || B.isAir(block.getRelative(BlockFace.NORTH).getBlockData());
+
+                        if (u) grid[x][z] = Math.max(grid[x][z], y);
+                    });
+
+                    for (int x = 0; x < 16; x++) {
+                        for (int z = 0; z < 16; z++) {
+                            if (grid[x][z] == Integer.MIN_VALUE)
+                                continue;
+                            update(x, grid[x][z], z, c, chunk, rng);
+                        }
+                    }
+
+                    chunk.iterate(MatterUpdate.class, (x, yf, z, v) -> {
+                        int y = yf + getWorld().minHeight();
+                        if (v != null && v.isUpdate()) {
+                            update(x, y, z, c, chunk, rng);
+                        }
+                    });
+                    chunk.deleteSlices(MatterUpdate.class);
+                    getMetrics().getUpdates().put(p.getMilliseconds());
+                }, RNG.r.i(1, 20))); //Why is there a random delay here?
+            });
+
+            chunk.raiseFlagUnchecked(MantleFlag.SCRIPT, () -> {
+                var scripts = getDimension().getChunkUpdateScripts();
+                if (scripts == null || scripts.isEmpty())
+                    return;
+
+                for (var script : scripts) {
+                    getExecution().updateChunk(script, chunk, c, (delay, task) -> run(semaphore, task, delay));
+                }
+            });
+
+            try {
+                semaphore.acquire(1024);
+            } catch (InterruptedException ignored) {}
+        } finally {
+            chunk.release();
         }
     }
 
-    @BlockCoordinates
-    default void updateLighting(int x, int y, int z, Chunk c) {
-        Block block = c.getBlock(x, y, z);
-        BlockData data = block.getBlockData();
-
-        if (B.isLit(data)) {
+    private static Runnable run(Semaphore semaphore, Runnable runnable, int delay) {
+        return () -> {
             try {
-                block.setType(Material.AIR, false);
-                block.setBlockData(data, true);
-            } catch (Exception e) {
-                Iris.reportError(e);
+                semaphore.acquire();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
-        }
+
+            J.s(() -> {
+                try {
+                    runnable.run();
+                } finally {
+                    semaphore.release();
+                }
+            }, delay);
+        };
     }
 
     @BlockCoordinates
     @Override
 
-    default void update(int x, int y, int z, Chunk c, RNG rf) {
+    default void update(int x, int y, int z, Chunk c, MantleChunk mc, RNG rf) {
         Block block = c.getBlock(x, y, z);
         BlockData data = block.getBlockData();
         blockUpdatedMetric();
@@ -360,19 +408,13 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
             }
 
             if (slot != null) {
-                KList<IrisLootTable> tables = getLootTables(rx, block);
+                KList<IrisLootTable> tables = getLootTables(rx, block, mc);
 
                 try {
                     Bukkit.getPluginManager().callEvent(new IrisLootEvent(this, block, slot, tables));
-
-                    if (!tables.isEmpty()){
-                        Iris.debug("IrisLootEvent has been accessed");
-                    }
-
-                    if (tables.isEmpty())
-                        return;
+                    if (tables.isEmpty()) return;
                     InventoryHolder m = (InventoryHolder) block.getState();
-                    addItems(false, m.getInventory(), rx, tables, slot, x, y, z, 15);
+                    addItems(false, m.getInventory(), rx, tables, slot, c.getWorld(), x, y, z, 15);
 
                 } catch (Throwable e) {
                     Iris.reportError(e);
@@ -411,21 +453,21 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
             }
         }
 
-        for (int i = 0; i < 4; i++) {
-            try {
-                Arrays.parallelSort(nitems, (a, b) -> rng.nextInt());
-                break;
-            } catch (Throwable e) {
-                Iris.reportError(e);
-
-            }
+        for (int i = nitems.length; i > 1; i--) {
+            int j = rng.nextInt(i);
+            ItemStack tmp = nitems[i - 1];
+            nitems[i - 1] = nitems[j];
+            nitems[j] = tmp;
         }
 
         inventory.setContents(nitems);
     }
 
     @Override
-    default void injectTables(KList<IrisLootTable> list, IrisLootReference r) {
+    default void injectTables(KList<IrisLootTable> list, IrisLootReference r, boolean fallback) {
+        if (r.getMode().equals(IrisLootMode.FALLBACK) && !fallback)
+            return;
+
         if (r.getMode().equals(IrisLootMode.CLEAR) || r.getMode().equals(IrisLootMode.REPLACE)) {
             list.clear();
         }
@@ -436,13 +478,23 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     @BlockCoordinates
     @Override
     default KList<IrisLootTable> getLootTables(RNG rng, Block b) {
+        MantleChunk mc = getMantle().getMantle().getChunk(b.getChunk()).use();
+        try {
+            return getLootTables(rng, b, mc);
+        } finally {
+            mc.release();
+        }
+    }
+
+    @BlockCoordinates
+    default KList<IrisLootTable> getLootTables(RNG rng, Block b, MantleChunk mc) {
         int rx = b.getX();
         int rz = b.getZ();
         int ry = b.getY() - getWorld().minHeight();
         double he = getComplex().getHeightStream().get(rx, rz);
         KList<IrisLootTable> tables = new KList<>();
 
-        PlacedObject po = getObjectPlacement(rx, ry, rz);
+        PlacedObject po = getObjectPlacement(rx, ry, rz, mc);
         if (po != null && po.getPlacement() != null) {
             if (B.isStorageChest(b.getBlockData())) {
                 IrisLootTable table = po.getPlacement().getTable(b.getBlockData(), getData());
@@ -460,10 +512,11 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         IrisBiome biomeUnder = ry < he ? getComplex().getCaveBiomeStream().get(rx, rz) : biomeSurface;
 
         double multiplier = 1D * getDimension().getLoot().getMultiplier() * region.getLoot().getMultiplier() * biomeSurface.getLoot().getMultiplier() * biomeUnder.getLoot().getMultiplier();
-        injectTables(tables, getDimension().getLoot());
-        injectTables(tables, region.getLoot());
-        injectTables(tables, biomeSurface.getLoot());
-        injectTables(tables, biomeUnder.getLoot());
+        boolean fallback = tables.isEmpty();
+        injectTables(tables, getDimension().getLoot(), fallback);
+        injectTables(tables, region.getLoot(), fallback);
+        injectTables(tables, biomeSurface.getLoot(), fallback);
+        injectTables(tables, biomeUnder.getLoot(), fallback);
 
         if (tables.isNotEmpty()) {
             int target = (int) Math.round(tables.size() * multiplier);
@@ -481,16 +534,16 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     }
 
     @Override
-    default void addItems(boolean debug, Inventory inv, RNG rng, KList<IrisLootTable> tables, InventorySlotType slot, int x, int y, int z, int mgf) {
+    default void addItems(boolean debug, Inventory inv, RNG rng, KList<IrisLootTable> tables, InventorySlotType slot, World world, int x, int y, int z, int mgf) {
         KList<ItemStack> items = new KList<>();
 
-        int b = 4;
         for (IrisLootTable i : tables) {
             if (i == null)
                 continue;
-            b++;
-            items.addAll(i.getLoot(debug, rng, slot, x, y, z));
+            items.addAll(i.getLoot(debug, rng, slot, world, x, y, z));
         }
+        if (IrisLootEvent.callLootEvent(items, inv, world, x, y, z))
+            return;
 
         if (PaperLib.isPaper() && getWorld().hasRealWorld()) {
             PaperLib.getChunkAtAsync(getWorld().realWorld(), x >> 4, z >> 4).thenAccept((c) -> {
@@ -523,8 +576,9 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         return getTarget().getBurster();
     }
 
+    @Deprecated
     default void clean() {
-        burst().lazy(() -> getMantle().trim());
+        burst().lazy(() -> getMantle().trim(10));
     }
 
     @BlockCoordinates
@@ -562,6 +616,8 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     }
 
     int getGenerated();
+
+    CompletableFuture<Long> getHash32();
 
     default <T> IrisPosition lookForStreamResult(T find, ProceduralStream<T> stream, Function2<T, T, Boolean> matcher, long timeout) {
         AtomicInteger checked = new AtomicInteger();
@@ -761,7 +817,16 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
     }
 
     default PlacedObject getObjectPlacement(int x, int y, int z) {
-        String objectAt = getMantle().getMantle().get(x, y, z, String.class);
+        MantleChunk chunk = getMantle().getMantle().getChunk(x >> 4, z >> 4).use();
+        try {
+            return getObjectPlacement(x, y, z, chunk);
+        } finally {
+            chunk.release();
+        }
+    }
+
+    default PlacedObject getObjectPlacement(int x, int y, int z, MantleChunk chunk) {
+        String objectAt = chunk.get(x & 15, y, z & 15, String.class);
         if (objectAt == null || objectAt.isEmpty()) {
             return null;
         }
@@ -771,7 +836,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         int id = Integer.parseInt(v[1]);
 
 
-        JigsawPieceContainer container = getMantle().getMantle().get(x, y, z, JigsawPieceContainer.class);
+        JigsawPieceContainer container = chunk.get(x & 15, y, z & 15, JigsawPieceContainer.class);
         if (container != null) {
             IrisJigsawPiece piece = container.load(getData());
             if (piece.getObject().equals(object))
@@ -786,7 +851,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
             }
         }
 
-        IrisBiome biome = getBiome(x, y, z);
+        IrisBiome biome = getSurfaceBiome(x, z);
 
         for (IrisObjectPlacement i : biome.getObjects()) {
             if (i.getPlace().contains(object)) {
@@ -803,10 +868,29 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         return getBiomeOrMantle(l.getBlockX(), l.getBlockY(), l.getBlockZ());
     }
 
-    default void gotoBiome(IrisBiome biome, Player player) {
+    @Nullable
+    @BlockCoordinates
+    default Position2 getNearestStronghold(Position2 pos) {
+        KList<Position2> p = getDimension().getStrongholds(getSeedManager().getMantle());
+        if (p.isEmpty()) return null;
+
+        Position2 pr = null;
+        double d = Double.MAX_VALUE;
+
+        for (Position2 i : p) {
+            double dx = i.distance(pos);
+            if (dx < d) {
+                d = dx;
+                pr = i;
+            }
+        }
+        return pr;
+    }
+
+    default void gotoBiome(IrisBiome biome, Player player, boolean teleport) {
         Set<String> regionKeys = getDimension()
                 .getAllRegions(this).stream()
-                .filter((i) -> i.getAllBiomes(this).contains(biome))
+                .filter((i) -> i.getAllBiomeIds().contains(biome.getLoadKey()))
                 .map(IrisRegistrant::getLoadKey)
                 .collect(Collectors.toSet());
         Locator<IrisBiome> lb = Locator.surfaceBiome(biome.getLoadKey());
@@ -815,39 +899,18 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
                 && lb.matches(engine, chunk);
 
         if (!regionKeys.isEmpty()) {
-            locator.find(player);
+            locator.find(player, teleport, "Biome " + biome.getName());
         } else {
             player.sendMessage(C.RED + biome.getName() + " is not in any defined regions!");
         }
     }
 
-    default void gotoJigsaw(IrisJigsawStructure s, Player player) {
+    default void gotoJigsaw(IrisJigsawStructure s, Player player, boolean teleport) {
         if (s.getLoadKey().equals(getDimension().getStronghold())) {
-            KList<Position2> p = getDimension().getStrongholds(getSeedManager().getSpawn());
-
-            if (p.isEmpty()) {
+            Position2 pr = getNearestStronghold(new Position2(player.getLocation().getBlockX(), player.getLocation().getBlockZ()));
+            if (pr == null) {
                 player.sendMessage(C.GOLD + "No strongholds in world.");
-            }
-
-            Position2 px = new Position2(player.getLocation().getBlockX(), player.getLocation().getBlockZ());
-            Position2 pr = null;
-            double d = Double.MAX_VALUE;
-
-            Iris.debug("Ps: " + p.size());
-
-            for (Position2 i : p) {
-                Iris.debug("- " + i.getX() + " " + i.getZ());
-            }
-
-            for (Position2 i : p) {
-                double dx = i.distance(px);
-                if (dx < d) {
-                    d = dx;
-                    pr = i;
-                }
-            }
-
-            if (pr != null) {
+            } else {
                 Location ll = new Location(player.getWorld(), pr.getX(), 40, pr.getZ());
                 J.s(() -> player.teleport(ll));
             }
@@ -858,7 +921,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         if (getDimension().getJigsawStructures().stream()
                 .map(IrisJigsawStructurePlacement::getStructure)
                 .collect(Collectors.toSet()).contains(s.getLoadKey())) {
-            Locator.jigsawStructure(s.getLoadKey()).find(player);
+            Locator.jigsawStructure(s.getLoadKey()).find(player, teleport, "Structure " + s.getLoadKey());
         } else {
             Set<String> biomeKeys = getDimension().getAllBiomes(this).stream()
                     .filter((i) -> i.getJigsawStructures()
@@ -885,7 +948,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
             };
 
             if (!regionKeys.isEmpty()) {
-                locator.find(player);
+                locator.find(player, teleport, "Structure " + s.getLoadKey());
             } else {
                 player.sendMessage(C.RED + s.getLoadKey() + " is not in any defined regions, biomes or dimensions!");
             }
@@ -893,7 +956,7 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
 
     }
 
-    default void gotoObject(String s, Player player) {
+    default void gotoObject(String s, Player player, boolean teleport) {
         Set<String> biomeKeys = getDimension().getAllBiomes(this).stream()
                 .filter((i) -> i.getObjects().stream().anyMatch((f) -> f.getPlace().contains(s)))
                 .map(IrisRegistrant::getLoadKey)
@@ -916,28 +979,28 @@ public interface Engine extends DataProvider, Fallible, LootProvider, BlockUpdat
         };
 
         if (!regionKeys.isEmpty()) {
-            locator.find(player);
+            locator.find(player, teleport, "Object " + s);
         } else {
             player.sendMessage(C.RED + s + " is not in any defined regions or biomes!");
         }
     }
 
-    default void gotoRegion(IrisRegion r, Player player) {
-        if (!getDimension().getAllRegions(this).contains(r)) {
+    default void gotoRegion(IrisRegion r, Player player, boolean teleport) {
+        if (!getDimension().getRegions().contains(r.getLoadKey())) {
             player.sendMessage(C.RED + r.getName() + " is not defined in the dimension!");
             return;
         }
 
-        Locator.region(r.getLoadKey()).find(player);
+        Locator.region(r.getLoadKey()).find(player, teleport, "Region " + r.getName());
     }
 
-    default void gotoPOI(String type, Player p) {
-        Locator.poi(type).find(p);
+    default void gotoPOI(String type, Player p, boolean teleport) {
+        Locator.poi(type).find(p, teleport, "POI " + type);
     }
 
     default void cleanupMantleChunk(int x, int z) {
         if (IrisSettings.get().getPerformance().isTrimMantleInStudio() || !isStudio()) {
-            J.a(() -> getMantle().cleanupChunk(x, z));
+            getMantle().cleanupChunk(x, z);
         }
     }
 }

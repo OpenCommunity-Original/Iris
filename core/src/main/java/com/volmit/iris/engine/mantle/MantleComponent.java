@@ -24,13 +24,14 @@ import com.volmit.iris.engine.object.IrisDimension;
 import com.volmit.iris.util.context.ChunkContext;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
 import com.volmit.iris.util.mantle.Mantle;
-import com.volmit.iris.util.mantle.MantleFlag;
+import com.volmit.iris.util.mantle.flag.MantleFlag;
 import com.volmit.iris.util.parallel.BurstExecutor;
+import org.jetbrains.annotations.NotNull;
 
-public interface MantleComponent {
-    default int getRadius() {
-        return getEngineMantle().getRealRadius();
-    }
+public interface MantleComponent extends Comparable<MantleComponent> {
+    int getPriority();
+
+    int getRadius();
 
     default IrisData getData() {
         return getEngineMantle().getData();
@@ -60,6 +61,17 @@ public interface MantleComponent {
 
     MantleFlag getFlag();
 
+    boolean isEnabled();
+
+    void setEnabled(boolean b);
+
+    void hotload();
+
     @ChunkCoordinates
     void generateLayer(MantleWriter writer, int x, int z, ChunkContext context);
+
+    @Override
+    default int compareTo(@NotNull MantleComponent o) {
+        return Integer.compare(getPriority(), o.getPriority());
+    }
 }

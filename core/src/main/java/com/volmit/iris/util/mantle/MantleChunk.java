@@ -19,30 +19,37 @@
 package com.volmit.iris.util.mantle;
 
 import com.volmit.iris.Iris;
+import com.volmit.iris.core.tools.IrisToolbelt;
 import com.volmit.iris.util.documentation.ChunkCoordinates;
+import com.volmit.iris.util.documentation.ChunkRelativeBlockCoordinates;
 import com.volmit.iris.util.function.Consumer4;
+import com.volmit.iris.util.io.CountingDataInputStream;
 import com.volmit.iris.util.matter.IrisMatter;
 import com.volmit.iris.util.matter.Matter;
 import com.volmit.iris.util.matter.MatterSlice;
 import lombok.Getter;
+import lombok.SneakyThrows;
+import org.jetbrains.annotations.Nullable;
 
-import java.io.DataInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * Represents a mantle chunk. Mantle chunks contain sections of matter (see matter api)
  * Mantle Chunks are fully atomic & thread safe
  */
-public class MantleChunk {
+public class MantleChunk extends FlaggedChunk {
     @Getter
     private final int x;
     @Getter
     private final int z;
-    private final AtomicIntegerArray flags;
     private final AtomicReferenceArray<Matter> sections;
+    private final Semaphore ref = new Semaphore(Integer.MAX_VALUE, true);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /**
      * Create a mantle chunk
@@ -52,13 +59,8 @@ public class MantleChunk {
     @ChunkCoordinates
     public MantleChunk(int sectionHeight, int x, int z) {
         sections = new AtomicReferenceArray<>(sectionHeight);
-        flags = new AtomicIntegerArray(MantleFlag.values().length);
         this.x = x;
         this.z = z;
-
-        for (int i = 0; i < flags.length(); i++) {
-            flags.set(i, 0);
-        }
     }
 
     /**
@@ -69,35 +71,74 @@ public class MantleChunk {
      * @throws IOException            shit happens
      * @throws ClassNotFoundException shit happens
      */
-    public MantleChunk(int sectionHeight, DataInputStream din) throws IOException, ClassNotFoundException {
+    public MantleChunk(int version, int sectionHeight, CountingDataInputStream din) throws IOException {
         this(sectionHeight, din.readByte(), din.readByte());
         int s = din.readByte();
-
-        for (int i = 0; i < flags.length(); i++) {
-            flags.set(i, din.readBoolean() ? 1 : 0);
-        }
+        readFlags(version, din);
 
         for (int i = 0; i < s; i++) {
             Iris.addPanic("read.section", "Section[" + i + "]");
-            if (din.readBoolean()) {
+            long size = din.readInt();
+            if (size == 0) continue;
+            long start = din.count();
+            if (i >= sectionHeight) {
+                din.skipTo(start + size);
+                continue;
+            }
+
+            try {
                 sections.set(i, Matter.readDin(din));
+            } catch (IOException e) {
+                long end = start + size;
+                Iris.error("Failed to read chunk section, skipping it.");
+                Iris.addPanic("read.byte.range", start + " " + end);
+                Iris.addPanic("read.byte.current", din.count() + "");
+                Iris.reportError(e);
+                e.printStackTrace();
+                Iris.panic();
+
+                din.skipTo(end);
+                TectonicPlate.addError();
+            }
+            if (din.count() != start + size) {
+                throw new IOException("Chunk section read size mismatch!");
             }
         }
     }
 
-    public void flag(MantleFlag flag, boolean f) {
-        flags.set(flag.ordinal(), f ? 1 : 0);
+    @SneakyThrows
+    public void close() {
+        closed.set(true);
+        ref.acquire(Integer.MAX_VALUE);
+        ref.release(Integer.MAX_VALUE);
     }
 
-    public void raiseFlag(MantleFlag flag, Runnable r) {
-        if (!isFlagged(flag)) {
-            flag(flag, true);
-            r.run();
+    public boolean inUse() {
+        return ref.availablePermits() < Integer.MAX_VALUE;
+    }
+
+    public MantleChunk use() {
+        if (closed.get()) throw new IllegalStateException("Chunk is closed!");
+        ref.acquireUninterruptibly();
+        if (closed.get()) {
+            ref.release();
+            throw new IllegalStateException("Chunk is closed!");
         }
+        return this;
     }
 
-    public boolean isFlagged(MantleFlag flag) {
-        return flags.get(flag.ordinal()) == 1;
+    public void release() {
+        ref.release();
+    }
+
+    public void copyFrom(MantleChunk chunk) {
+        use();
+        super.copyFrom(chunk, () -> {
+            for (int i = 0; i < sections.length(); i++) {
+                sections.set(i, chunk.get(i));
+            }
+        });
+        release();
     }
 
     /**
@@ -120,6 +161,15 @@ public class MantleChunk {
     @ChunkCoordinates
     public Matter get(int section) {
         return sections.get(section);
+    }
+
+    @Nullable
+    @ChunkRelativeBlockCoordinates
+    @SuppressWarnings("unchecked")
+    public <T> T get(int x, int y, int z, Class<T> type) {
+        return (T) getOrCreate(y >> 4)
+                .slice(type)
+                .get(x & 15, y & 15, z & 15);
     }
 
     /**
@@ -149,14 +199,12 @@ public class MantleChunk {
      */
     @ChunkCoordinates
     public Matter getOrCreate(int section) {
-        Matter matter = get(section);
+        final Matter matter = get(section);
+        if (matter != null) return matter;
 
-        if (matter == null) {
-            matter = new IrisMatter(16, 16, 16);
-            sections.set(section, matter);
-        }
-
-        return matter;
+        final Matter instance = new IrisMatter(16, 16, 16);
+        final Matter value = sections.compareAndExchange(section, null, instance);
+        return value == null ? instance : value;
     }
 
     /**
@@ -166,23 +214,28 @@ public class MantleChunk {
      * @throws IOException shit happens
      */
     public void write(DataOutputStream dos) throws IOException {
+        close();
         dos.writeByte(x);
         dos.writeByte(z);
         dos.writeByte(sections.length());
+        writeFlags(dos);
 
-        for (int i = 0; i < flags.length(); i++) {
-            dos.writeBoolean(flags.get(i) == 1);
-        }
-
+        var bytes = new ByteArrayOutputStream(8192);
+        var sub = new DataOutputStream(bytes);
         for (int i = 0; i < sections.length(); i++) {
             trimSlice(i);
 
             if (exists(i)) {
-                dos.writeBoolean(true);
-                Matter matter = get(i);
-                matter.writeDos(dos);
+                try {
+                    Matter matter = get(i);
+                    matter.writeDos(sub);
+                    dos.writeInt(bytes.size());
+                    bytes.writeTo(dos);
+                } finally {
+                    bytes.reset();
+                }
             } else {
-                dos.writeBoolean(false);
+                dos.writeInt(0);
             }
         }
     }
@@ -218,6 +271,8 @@ public class MantleChunk {
     }
 
     public void deleteSlices(Class<?> c) {
+        if (IrisToolbelt.isRetainingMantleDataForSlice(c.getCanonicalName()))
+            return;
         for (int i = 0; i < sections.length(); i++) {
             Matter m = sections.get(i);
             if (m != null && m.hasSlice(c)) {
@@ -232,5 +287,10 @@ public class MantleChunk {
                 trimSlice(i);
             }
         }
+    }
+
+    @Override
+    public boolean isClosed() {
+        return closed.get();
     }
 }

@@ -23,8 +23,11 @@ import com.volmit.iris.Iris;
 import com.volmit.iris.util.io.IO;
 import com.volmit.iris.util.json.JSONException;
 import com.volmit.iris.util.json.JSONObject;
+import com.volmit.iris.util.misc.getHardware;
 import com.volmit.iris.util.plugin.VolmitSender;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.File;
 import java.io.IOException;
@@ -41,13 +44,15 @@ public class IrisSettings {
     private IrisSettingsConcurrency concurrency = new IrisSettingsConcurrency();
     private IrisSettingsStudio studio = new IrisSettingsStudio();
     private IrisSettingsPerformance performance = new IrisSettingsPerformance();
+    private IrisSettingsUpdater updater = new IrisSettingsUpdater();
+    private IrisSettingsPregen pregen = new IrisSettingsPregen();
+    private IrisSettingsSentry sentry = new IrisSettingsSentry();
 
     public static int getThreadCount(int c) {
-        return switch (c) {
+        return Math.max(switch (c) {
             case -1, -2, -4 -> Runtime.getRuntime().availableProcessors() / -c;
-            case 0, 1, 2 -> 1;
             default -> Math.max(c, 2);
-        };
+        }, 1);
     }
 
     public static IrisSettings get() {
@@ -126,35 +131,92 @@ public class IrisSettings {
         public boolean markerEntitySpawningSystem = true;
         public boolean effectSystem = true;
         public boolean worldEditWandCUI = true;
+        public boolean globalPregenCache = false;
     }
 
     @Data
     public static class IrisSettingsConcurrency {
         public int parallelism = -1;
+        public int ioParallelism = -2;
+        public int worldGenParallelism = -1;
+
+        public int getWorldGenThreads() {
+            return getThreadCount(worldGenParallelism);
+        }
+    }
+
+    @Data
+    public static class IrisSettingsPregen {
+        public boolean useCacheByDefault = true;
+        public boolean useHighPriority = false;
+        public boolean useVirtualThreads = false;
+        public boolean useTicketQueue = true;
+        public int maxConcurrency = 256;
     }
 
     @Data
     public static class IrisSettingsPerformance {
-        public boolean trimMantleInStudio = false;
+        private IrisSettingsEngineSVC engineSVC = new IrisSettingsEngineSVC();
+        public boolean trimMantleInStudio = false; 
         public int mantleKeepAlive = 30;
-        public int cacheSize = 4_096;
+        public int noiseCacheSize = 1_024;
         public int resourceLoaderCacheSize = 1_024;
         public int objectLoaderCacheSize = 4_096;
         public int scriptLoaderCacheSize = 512;
-        public boolean dynamicPerformanceMode = true;
+        public int tectonicPlateSize = -1;
+        public int mantleCleanupDelay = 200;
+
+        public int getTectonicPlateSize() {
+            if (tectonicPlateSize > 0)
+                return tectonicPlateSize;
+
+            return (int) (getHardware.getProcessMemory() / 512L);
+        }
+    }
+
+    @Data
+    public static class IrisSettingsUpdater {
+        public int maxConcurrency = 256;
+        public boolean nativeThreads = false;
+        public double threadMultiplier = 2;
+
+        public double chunkLoadSensitivity = 0.7;
+        public MsRange emptyMsRange = new MsRange(80, 100);
+        public MsRange defaultMsRange = new MsRange(20, 40);
+
+        public int getMaxConcurrency() {
+            return Math.max(Math.abs(maxConcurrency), 1);
+        }
+
+        public double getThreadMultiplier() {
+            return Math.min(Math.abs(threadMultiplier), 0.1);
+        }
+
+        public double getChunkLoadSensitivity() {
+            return Math.min(chunkLoadSensitivity, 0.9);
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MsRange {
+        public int min = 20;
+        public int max = 40;
     }
 
     @Data
     public static class IrisSettingsGeneral {
-        public boolean bootUnstable = false;
-        public boolean useIntegratedChunkHandler = false;
+        public boolean DoomsdayAnnihilationSelfDestructMode = false;
         public boolean commandSounds = true;
         public boolean debug = false;
+        public boolean dumpMantleOnError = false;
         public boolean disableNMS = false;
         public boolean pluginMetrics = true;
         public boolean splashLogoStartup = true;
         public boolean useConsoleCustomColors = true;
         public boolean useCustomColorsIngame = true;
+        public boolean adjustVanillaHeight = false;
         public String forceMainWorld = "";
         public int spinh = -20;
         public int spins = 7;
@@ -169,9 +231,17 @@ public class IrisSettings {
     }
 
     @Data
+    public static class IrisSettingsSentry {
+        public boolean includeServerId = true;
+        public boolean disableAutoReporting = false;
+        public boolean debug = false;
+    }
+
+    @Data
     public static class IrisSettingsGUI {
         public boolean useServerLaunchedGuis = true;
         public boolean maximumPregenGuiFPS = false;
+        public boolean colorMode = true;
     }
 
     @Data
@@ -179,6 +249,10 @@ public class IrisSettings {
         public String defaultWorldType = "overworld";
         public int maxBiomeChildDepth = 4;
         public boolean preventLeafDecay = true;
+        public boolean useMulticore = false;
+        public boolean useMulticoreMantle = false;
+        public boolean offsetNoiseTypes = false;
+        public boolean earlyCustomBlocks = false;
     }
 
     @Data
@@ -187,5 +261,16 @@ public class IrisSettings {
         public boolean openVSCode = true;
         public boolean disableTimeAndWeather = true;
         public boolean autoStartDefaultStudio = false;
+    }
+
+    @Data
+    public static class IrisSettingsEngineSVC {
+        public boolean useVirtualThreads = true;
+        public boolean forceMulticoreWrite = false;
+        public int priority = Thread.NORM_PRIORITY;
+
+        public int getPriority() {
+            return Math.max(Math.min(priority, Thread.MAX_PRIORITY), Thread.MIN_PRIORITY);
+        }
     }
 }
